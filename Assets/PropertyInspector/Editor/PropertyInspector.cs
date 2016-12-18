@@ -239,7 +239,6 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
     {
         window.titleContent = _titleGUIContentCache;
         window._focus = true;
-        window.FilterSelected();
         window.wantsMouseMove = true;
         window.autoRepaintOnSceneChange = true;
         window.minSize = new Vector2(400, window.minSize.y);
@@ -247,6 +246,8 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         window._showHidden = EditorPrefs.GetBool(ShowHiddenKey + window._openedAdUtility, false);
         window._inspectorMode = EditorPrefs.GetBool(InspectorModeKey + window._openedAdUtility, false);
         window._multipleEdit = EditorPrefs.GetBool(MultipleEditKey + window._openedAdUtility, false);
+
+        window.FilterSelected();
     }
 
     void OnSelectionChange()
