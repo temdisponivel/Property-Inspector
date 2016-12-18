@@ -37,6 +37,7 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
         public List<SerializedProperty> Properties { get; set; }
         public HashSet<string> PropertiesPaths { get; set; }
         public List<DrawableProperty> Childs { get; set; }
+        public bool HasAppliableChanges { get; set; }
     }
 
     #endregion
@@ -122,9 +123,9 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
         get
         {
             if (_highlightGuiContentCache == null)
-                _highlightGuiContentCache = new GUIContent(EditorGUIUtility.Load("icons/d_UnityEditor.HierarchyWindow.png") as Texture2D,"Highlight object");
+                _highlightGuiContentCache = new GUIContent(EditorGUIUtility.Load("icons/d_UnityEditor.HierarchyWindow.png") as Texture2D, "Highlight object");
 
-			return _highlightGuiContentCache;
+            return _highlightGuiContentCache;
         }
     }
 
@@ -134,10 +135,10 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
         get
         {
             if (_titleGUIContentCache == null)
-				_titleGUIContentCache = new GUIContent("Search Utility", EditorGUIUtility.Load("icons/d_ViewToolZoom.png") as Texture2D);
+                _titleGUIContentCache = new GUIContent("Search Utility", EditorGUIUtility.Load("icons/d_ViewToolZoom.png") as Texture2D);
 
-			return _titleGUIContentCache;
-		}
+            return _titleGUIContentCache;
+        }
     }
 
     private static GUIContent _helpGUIContentCache;
@@ -145,10 +146,10 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
     {
         get
         {
-			if (_helpGUIContentCache == null)
-				_helpGUIContentCache = new GUIContent(EditorGUIUtility.Load("icons/_Help.png") as Texture2D, "Show Help");
+            if (_helpGUIContentCache == null)
+                _helpGUIContentCache = new GUIContent(EditorGUIUtility.Load("icons/_Help.png") as Texture2D, "Show Help");
 
-			return _helpGUIContentCache;
+            return _helpGUIContentCache;
         }
     }
 
@@ -157,10 +158,10 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
     {
         get
         {
-			if (_collapseGUIContentCache == null)
-				_collapseGUIContentCache = new GUIContent(EditorGUIUtility.Load("icons/d_winbtn_win_min_a.png") as Texture2D, tooltip: "Collapse all");
+            if (_collapseGUIContentCache == null)
+                _collapseGUIContentCache = new GUIContent(EditorGUIUtility.Load("icons/d_winbtn_win_min_a.png") as Texture2D, tooltip: "Collapse all");
 
-			return _collapseGUIContentCache;
+            return _collapseGUIContentCache;
         }
     }
 
@@ -169,10 +170,10 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
     {
         get
         {
-			if (__expandGUIContentCache == null)
-				__expandGUIContentCache = new GUIContent(EditorGUIUtility.Load("icons/d_winbtn_win_max_a.png") as Texture2D, tooltip: "Expand all");
+            if (__expandGUIContentCache == null)
+                __expandGUIContentCache = new GUIContent(EditorGUIUtility.Load("icons/d_winbtn_win_max_a.png") as Texture2D, tooltip: "Expand all");
 
-			return __expandGUIContentCache;
+            return __expandGUIContentCache;
         }
     }
 
@@ -212,11 +213,11 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
 
     static void SetupInfo(SearchUtility window)
     {
-		window.titleContent = _titleGUIContentCache;
+        window.titleContent = _titleGUIContentCache;
         window._focus = true;
         window.FilterSelected();
         window.wantsMouseMove = true;
-		window.autoRepaintOnSceneChange = true;
+        window.autoRepaintOnSceneChange = true;
         window.minSize = new Vector2(400, window.minSize.y);
 
         window._showHidden = EditorPrefs.GetBool(ShowHiddenKey, false);
@@ -227,13 +228,13 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
     void OnSelectionChange()
     {
         FilterSelected();
-		Repaint ();
+        Repaint();
     }
 
-	void OnInspectorUpdate() 
-	{
-		Repaint();
-	}
+    void OnInspectorUpdate()
+    {
+        Repaint();
+    }
 
     void OnFocus()
     {
@@ -260,7 +261,7 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
 
         GUILayout.FlexibleSpace();
 
-        if (GUILayout.Button(_helpGUIContent))
+        if (GUILayout.Button(_helpGUIContent, GUIStyle.none))
         {
             ShowHelp();
         }
@@ -274,17 +275,17 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
 
         GUI.SetNextControlName(SearchFieldName);
 
-		_currentSearchedQuery = EditorGUILayout.TextField(_currentSearchedQuery, (GUIStyle) "ToolbarSeachTextField", GUILayout.Width(position.width - 25));
+        _currentSearchedQuery = EditorGUILayout.TextField(_currentSearchedQuery, (GUIStyle)"ToolbarSeachTextField", GUILayout.Width(position.width - 25));
 
-		var style = "ToolbarSeachCancelButtonEmpty";
-		if (!string.IsNullOrEmpty(_currentSearchedQuery))
-			style = "ToolbarSeachCancelButton";
+        var style = "ToolbarSeachCancelButtonEmpty";
+        if (!string.IsNullOrEmpty(_currentSearchedQuery))
+            style = "ToolbarSeachCancelButton";
 
-		if (GUILayout.Button(GUIContent.none, style))
-		{
-			_currentSearchedQuery = string.Empty;
-			GUIUtility.keyboardControl = 0;
-		}
+        if (GUILayout.Button(GUIContent.none, style))
+        {
+            _currentSearchedQuery = string.Empty;
+            GUIUtility.keyboardControl = 0;
+        }
 
         EditorGUILayout.EndHorizontal();
 
@@ -344,10 +345,10 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
         {
             if (Event.current != null)
             {
-				if (Event.current.type == EventType.keyDown && Event.current.keyCode == KeyCode.Escape)
+                if (Event.current.type == EventType.keyDown && Event.current.keyCode == KeyCode.Escape)
                 {
-					Close ();
-					return;
+                    Close();
+                    return;
                 }
             }
         }
@@ -365,11 +366,16 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
             }
         }
 
-		Repaint ();
+        Repaint();
     }
 
     private void OnGUI()
     {
+        if (Event.current.type == EventType.Layout)
+            ValidaIfCanApplyAll();
+
+        bool validateChangesOnNextFrame = false;
+
         DrawSearchField();
 
         if (_focus)
@@ -386,38 +392,46 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
             var current = _drawable[i];
 
             var name = string.Format("{0} (Multiples ({1}))", current.Type, current.Object.targetObjects.Length);
-            bool isMultiple = true;
-            if (current.UnityObjects == null || current.UnityObjects.Count == 0)
-            {
+            bool isMultiple = !(current.UnityObjects == null || current.UnityObjects.Count == 0);
+            if (!isMultiple)
                 name = current.UnityObject.name;
-                isMultiple = false;
-            }
 
             if (_showAll)
                 EditorPrefs.SetBool(current.GetHashCode() + name, true);
             else if (_collapseAll)
                 EditorPrefs.SetBool(current.GetHashCode() + name, false);
 
-			var headerResult = false;
-			if (current.Object.targetObjects.Length > 1)
-				headerResult = DrawHeader (name, current.GetHashCode () + name, false);
-			else
-				headerResult = DrawHeader(name, current.GetHashCode() + name, true, () => EditorGUIUtility.PingObject(isMultiple ? current.UnityObjects[0] : current.UnityObject));
+            Action buttonCallback = null;
+            Action applyCallback = null;
 
-			if (headerResult)
+            if (current.Object.targetObjects.Length == 1)
+                buttonCallback = () => EditorGUIUtility.PingObject(isMultiple ? current.UnityObjects[0] : current.UnityObject);
+            
+            if (current.HasAppliableChanges)
+                applyCallback = () =>
+                {
+                    validateChangesOnNextFrame = true;
+                    ApplyChangesToPrefab(current);
+                };
+
+            if (DrawHeader(name, current.GetHashCode() + name, buttonCallback, applyCallback))
             {
                 BeginContents();
 
                 EditorGUI.BeginChangeCheck();
 
                 var serializedObject = current.Object;
+                serializedObject.Update();
                 foreach (var serializedProperty in current.Properties)
                 {
                     EditorGUILayout.PropertyField(serializedProperty, true);
                 }
 
                 if (EditorGUI.EndChangeCheck())
+                {
                     serializedObject.ApplyModifiedProperties();
+                    validateChangesOnNextFrame = true;
+                }
 
                 if (current.Childs.Count > 0)
                 {
@@ -425,24 +439,37 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
                     {
                         var currentChild = current.Childs[j];
 
+                        name = string.Format("{0} (Multiples ({1}))", currentChild.Type, currentChild.Object.targetObjects.Length);
+                        isMultiple = !(currentChild.UnityObjects == null || currentChild.UnityObjects.Count == 0);
+                        if (!isMultiple)
+                            name = currentChild.UnityObject.GetType().Name;
+
                         if (_showAll)
                             EditorPrefs.SetBool(currentChild.GetHashCode() + name, true);
                         else if (_collapseAll)
                             EditorPrefs.SetBool(currentChild.GetHashCode() + name, false);
-						
-						headerResult = false;
-						if (current.Object.targetObjects.Length > 1)
-							headerResult = DrawHeader (name, current.GetHashCode () + name, false);
-						else
-							headerResult = DrawHeader(currentChild.UnityObject.GetType().Name, currentChild.GetHashCode() + name, true, () => EditorGUIUtility.PingObject(current.UnityObject));
 
-						if (headerResult)
+                        buttonCallback = null;
+                        applyCallback = null;
+
+                        if (currentChild.Object.targetObjects.Length == 1)
+                            buttonCallback = () => EditorGUIUtility.PingObject(isMultiple ? currentChild.UnityObjects[0] : currentChild.UnityObject);
+                        
+                        if (currentChild.HasAppliableChanges)
+                            applyCallback = () =>
+                            {
+                                validateChangesOnNextFrame = true;
+                                ApplyChangesToPrefab(currentChild);
+                            };
+
+                        if (DrawHeader(name, currentChild.GetHashCode() + name, buttonCallback, applyCallback))
                         {
                             BeginContents();
 
                             EditorGUI.BeginChangeCheck();
 
                             var serializedObjectChild = currentChild.Object;
+                            serializedObjectChild.Update();
 
                             foreach (var serializedProperty in currentChild.Properties)
                             {
@@ -450,7 +477,10 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
                             }
 
                             if (EditorGUI.EndChangeCheck())
+                            {
                                 serializedObjectChild.ApplyModifiedProperties();
+                                validateChangesOnNextFrame = true;
+                            }
 
                             EndContents();
                         }
@@ -480,6 +510,8 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
             FilterMultiple();
         else
             FilterSingles();
+
+        ValidaIfCanApplyAll();
     }
 
 
@@ -565,13 +597,12 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
             else
             {
                 FilterProperties(null, drawable, serializedObject, iterator, searchAsLow, isPath);
-                //AddObjectsAndProperties(drawables, drawable, currentObject);
             }
 
             AddObjectsAndProperties(drawables, drawable, currentObject);
 
-			if (HandleProgressBar(i / objects.Length))
-				break;
+            if (HandleProgressBar(i / objects.Length))
+                break;
 
             var currentGameObject = currentObject as GameObject;
             if (currentGameObject != null)
@@ -644,7 +675,7 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
                 stepInto = false;
                 continue;
             }
-            
+
             stepInto = iterator.hasChildren && !iterator.isArray && iterator.propertyType == SerializedPropertyType.Generic;
 
             if (child.PropertiesPaths.Contains(iterator.propertyPath))
@@ -694,6 +725,66 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
 
         foreach (var propertiesPath in drawable.PropertiesPaths)
             drawableType.PropertiesPaths.Add(propertiesPath);
+    }
+
+    private void ValidaIfCanApplyAll()
+    {
+        for (int i = 0; i < _drawable.Count; i++)
+        {
+            ValidateIfCanApply(_drawable[i]);
+        }
+    }
+
+    bool ValidateIfCanApply(DrawableProperty property)
+    {
+        for (int i = 0; i < property.Properties.Count; i++)
+        {
+            var currentProperty = property.Properties[i];
+
+            if (currentProperty.isInstantiatedPrefab && currentProperty.prefabOverride)
+            {
+                property.HasAppliableChanges = true;
+                break;
+            }
+        }
+
+        bool childResults = false;
+        for (int i = 0; i < property.Childs.Count; i++)
+        {
+            childResults |= ValidateIfCanApply(property.Childs[i]);
+        }
+
+        property.HasAppliableChanges |= childResults;
+
+        return property.HasAppliableChanges;
+    }
+
+    void ApplyChangesToPrefab(DrawableProperty property)
+    {
+        List<Object> objects = new List<Object>();
+
+        objects.AddRange(property.UnityObjects);
+
+        if (property.UnityObject != null)
+            objects.Add(property.UnityObject);
+
+        for (int i = 0; i < objects.Count; i++)
+        {
+            var instance = objects[i] as GameObject;
+            if (instance == null)
+            {
+                var component = objects[i] as Component;
+                if (component != null)
+                    instance = component.gameObject;
+
+                if (instance == null)
+                    continue;
+            }
+
+            PrefabUtility.ReplacePrefab(instance, PrefabUtility.GetPrefabParent(instance), ReplacePrefabOptions.ConnectToPrefab);
+        }
+
+        property.HasAppliableChanges = false;
     }
 
     #endregion
@@ -782,55 +873,62 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
         GUILayout.Space(3f);
     }
 
-    static public bool DrawHeader(string text, string key, bool drawButton = false, Action onButtonClick = null)
+    static public bool DrawHeader(string text, string key, Action onButtonClick = null, Action onApplyCallback = null)
     {
         var state = EditorPrefs.GetBool(key, true);
 
         GUILayout.Space(3f);
-        if (!state) 
-			GUI.backgroundColor = new Color(0.8f, 0.8f, 0.8f);
-		
+        if (!state)
+            GUI.backgroundColor = new Color(0.8f, 0.8f, 0.8f);
+
         GUILayout.BeginHorizontal();
         GUI.changed = false;
 
         text = "<b><size=11>" + text + "</size></b>";
-        if (state) 
-			text = "\u25BC " + text;
-        else 
-			text = "\u25BA " + text;
-		
-        if (!GUILayout.Toggle(true, text, "dragtab", GUILayout.MinWidth(20f), GUILayout.ExpandWidth(true))) 
-			state = !state;
+        if (state)
+            text = "\u25BC " + text;
+        else
+            text = "\u25BA " + text;
 
-        if (drawButton)
+        if (!GUILayout.Toggle(true, text, "dragtab", GUILayout.MinWidth(20f), GUILayout.ExpandWidth(true)))
+            state = !state;
+
+        if (onApplyCallback != null)
         {
-			if (!GUILayout.Toggle(true, _highlightGUIContent, "dragtab", GUILayout.Width(35)))
+            if (!GUILayout.Toggle(true, new GUIContent("Apply"), "dragtab", GUILayout.Width(50)))
             {
-                if (onButtonClick != null)
-                    onButtonClick();
+                onApplyCallback();
             }
         }
 
-        if (GUI.changed) 
-			EditorPrefs.SetBool(key, state);
+        if (onButtonClick != null)
+        {
+            if (!GUILayout.Toggle(true, _highlightGUIContent, "dragtab", GUILayout.Width(35)))
+            {
+                onButtonClick();
+            }
+        }
+
+        if (GUI.changed)
+            EditorPrefs.SetBool(key, state);
 
         GUILayout.Space(2f);
         GUILayout.EndHorizontal();
         GUI.backgroundColor = Color.white;
-        if (!state) 
-			GUILayout.Space(3f);
+        if (!state)
+            GUILayout.Space(3f);
         return state;
     }
 
     void ShowButton(Rect position)
     {
-		var locked = GUI.Toggle(position, _locked, GUIContent.none, "IN LockButton");
+        var locked = GUI.Toggle(position, _locked, GUIContent.none, "IN LockButton");
 
-		if (locked != _locked) 
-		{
-			_lockedObjects = Selection.objects;
-			FilterSelected();
-		}	
+        if (locked != _locked)
+        {
+            _lockedObjects = Selection.objects;
+            FilterSelected();
+        }
     }
 
     public void AddItemsToMenu(GenericMenu menu)
@@ -865,6 +963,8 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
             Bullet + "When 'Inspector mode' is on and there's no search typed, all properties of all objects/componenets will be shown. \n" +
             "Note that if you have numorous objects/components which have lots of properties, this feature can become a bit slow. " +
             "Since this is basically inspecting all those objects/components.\n" +
+            Bullet + "Use the highlight button (hierarchy icon aside object/component headers) to hightlight the object in hierarchy or project. \n" +
+            Bullet + "Use the padlock icon on the top to lock the current object selection. \n" +
             "\n" +
             "See read me file inside Search Utility's plugin folder for more info.\n";
 
