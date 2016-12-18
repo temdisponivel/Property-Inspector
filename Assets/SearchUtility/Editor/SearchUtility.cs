@@ -43,6 +43,7 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
     #endregion
 
     private const string SearchFieldName = "SearchQuery";
+
     private const string ShowHiddenKey = "SUSHOWHIDDEN";
     private const string InspectorModeKey = "SUINSPECTORMODE";
     private const string MultipleEditKey = "MultipleEditKey";
@@ -123,8 +124,13 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
         get
         {
             if (_highlightGuiContentCache == null)
-                _highlightGuiContentCache = new GUIContent(EditorGUIUtility.Load("icons/d_UnityEditor.HierarchyWindow.png") as Texture2D, "Highlight object");
+            {
+                var textToLoad = "icons/UnityEditor.HierarchyWindow.png";
+                if (EditorGUIUtility.isProSkin)
+                    textToLoad = "icons/d_UnityEditor.HierarchyWindow.png";
 
+                _highlightGuiContentCache = new GUIContent(EditorGUIUtility.Load(textToLoad) as Texture2D, "Highlight object");
+            }
             return _highlightGuiContentCache;
         }
     }
@@ -135,7 +141,12 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
         get
         {
             if (_titleGUIContentCache == null)
-                _titleGUIContentCache = new GUIContent("Search Utility", EditorGUIUtility.Load("icons/d_ViewToolZoom.png") as Texture2D);
+            {
+                var textToLoad = "icons/ViewToolZoom.png";
+                if (EditorGUIUtility.isProSkin)
+                    textToLoad = "icons/d_ViewToolZoom.png";
+                _titleGUIContentCache = new GUIContent("Search Utility", EditorGUIUtility.Load(textToLoad) as Texture2D);
+            }
 
             return _titleGUIContentCache;
         }
@@ -159,7 +170,12 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
         get
         {
             if (_collapseGUIContentCache == null)
-                _collapseGUIContentCache = new GUIContent(EditorGUIUtility.Load("icons/d_winbtn_win_min_a.png") as Texture2D, tooltip: "Collapse all");
+            {
+                var textToLoad = "icons/winbtn_win_min.png";
+                if (EditorGUIUtility.isProSkin)
+                    textToLoad = "icons/d_winbtn_win_min.png";
+                _collapseGUIContentCache = new GUIContent(EditorGUIUtility.Load(textToLoad) as Texture2D, tooltip: "Collapse all");
+            }
 
             return _collapseGUIContentCache;
         }
@@ -171,7 +187,12 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
         get
         {
             if (__expandGUIContentCache == null)
-                __expandGUIContentCache = new GUIContent(EditorGUIUtility.Load("icons/d_winbtn_win_max_a.png") as Texture2D, tooltip: "Expand all");
+            {
+                var textToLoad = "icons/winbtn_win_max.png";
+                if (EditorGUIUtility.isProSkin)
+                    textToLoad = "icons/d_winbtn_win_max.png";
+                __expandGUIContentCache = new GUIContent(EditorGUIUtility.Load(textToLoad) as Texture2D, tooltip: "Expand all");
+            }
 
             return __expandGUIContentCache;
         }
@@ -198,15 +219,15 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
     private static void Init()
     {
         var window = CreateInstance<SearchUtility>();
-        SetupInfo(window);
         window._openedAdUtility = true;
+        SetupInfo(window);
         window.ShowUtility();
     }
 
     [MenuItem("Window/Search Utility Window")]
     private static void InitWindow()
     {
-        var window = GetWindow<SearchUtility>();
+        var window = CreateInstance<SearchUtility>();
         SetupInfo(window);
         window.Show();
     }
@@ -220,14 +241,15 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
         window.autoRepaintOnSceneChange = true;
         window.minSize = new Vector2(400, window.minSize.y);
 
-        window._showHidden = EditorPrefs.GetBool(ShowHiddenKey, false);
-        window._inspectorMode = EditorPrefs.GetBool(InspectorModeKey, false);
-        window._multipleEdit = EditorPrefs.GetBool(MultipleEditKey, false);
+        window._showHidden = EditorPrefs.GetBool(ShowHiddenKey + window._openedAdUtility, false);
+        window._inspectorMode = EditorPrefs.GetBool(InspectorModeKey + window._openedAdUtility, false);
+        window._multipleEdit = EditorPrefs.GetBool(MultipleEditKey + window._openedAdUtility, false);
     }
 
     void OnSelectionChange()
     {
-        FilterSelected();
+        if (!_locked)
+            FilterSelected();
         Repaint();
     }
 
@@ -238,7 +260,8 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
 
     void OnFocus()
     {
-        FilterSelected();
+        //FilterSelected();
+        Repaint();
         _focus = true;
     }
 
@@ -260,6 +283,19 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
         EditorGUILayout.LabelField(_titleGUIContent, "LargeLabel");
 
         GUILayout.FlexibleSpace();
+
+        if (_openedAdUtility)
+        {
+            var locked = GUILayout.Toggle(_locked, GUIContent.none, "IN LockButton");
+            if (locked != _locked)
+            {
+                _locked = locked;
+                _lockedObjects = Selection.objects;
+                FilterSelected();
+            }
+
+            GUILayout.Space(5);
+        }
 
         if (GUILayout.Button(_helpGUIContent, GUIStyle.none))
         {
@@ -310,18 +346,18 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
         if (edit != _multipleEdit)
         {
             filter = true;
-            EditorPrefs.SetBool(MultipleEditKey, edit);
+            EditorPrefs.SetBool(MultipleEditKey + _openedAdUtility, edit);
         }
         if (inspectorMode != _inspectorMode)
         {
             filter = true;
-            EditorPrefs.SetBool(InspectorModeKey, inspectorMode);
+            EditorPrefs.SetBool(InspectorModeKey + _openedAdUtility, inspectorMode);
         }
 
         if (showHidden != _showHidden)
         {
             filter = true;
-            EditorPrefs.SetBool(ShowHiddenKey, showHidden);
+            EditorPrefs.SetBool(ShowHiddenKey + _openedAdUtility, showHidden);
         }
 
         _inspectorMode = inspectorMode;
@@ -374,7 +410,7 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
         if (Event.current.type == EventType.Layout)
             ValidaIfCanApplyAll();
 
-        bool validateChangesOnNextFrame = false;
+        UpdateAllProperties();
 
         DrawSearchField();
 
@@ -401,18 +437,11 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
             else if (_collapseAll)
                 EditorPrefs.SetBool(current.GetHashCode() + name, false);
 
-            Action buttonCallback = null;
+            Action buttonCallback = GetObjectToHight(current);
             Action applyCallback = null;
 
-            if (current.Object.targetObjects.Length == 1)
-                buttonCallback = () => EditorGUIUtility.PingObject(isMultiple ? current.UnityObjects[0] : current.UnityObject);
-            
             if (current.HasAppliableChanges)
-                applyCallback = () =>
-                {
-                    validateChangesOnNextFrame = true;
-                    ApplyChangesToPrefab(current);
-                };
+                applyCallback = () => ApplyChangesToPrefab(current);
 
             if (DrawHeader(name, current.GetHashCode() + name, buttonCallback, applyCallback))
             {
@@ -421,17 +450,13 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
                 EditorGUI.BeginChangeCheck();
 
                 var serializedObject = current.Object;
-                serializedObject.Update();
                 foreach (var serializedProperty in current.Properties)
                 {
                     EditorGUILayout.PropertyField(serializedProperty, true);
                 }
 
                 if (EditorGUI.EndChangeCheck())
-                {
                     serializedObject.ApplyModifiedProperties();
-                    validateChangesOnNextFrame = true;
-                }
 
                 if (current.Childs.Count > 0)
                 {
@@ -439,7 +464,8 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
                     {
                         var currentChild = current.Childs[j];
 
-                        name = string.Format("{0} (Multiples ({1}))", currentChild.Type, currentChild.Object.targetObjects.Length);
+                        name = string.Format("{0} (Multiple ({1}))", currentChild.Type, currentChild.Object.targetObjects.Length);
+
                         isMultiple = !(currentChild.UnityObjects == null || currentChild.UnityObjects.Count == 0);
                         if (!isMultiple)
                             name = currentChild.UnityObject.GetType().Name;
@@ -449,18 +475,11 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
                         else if (_collapseAll)
                             EditorPrefs.SetBool(currentChild.GetHashCode() + name, false);
 
-                        buttonCallback = null;
+                        buttonCallback = GetObjectToHight(currentChild);
                         applyCallback = null;
 
-                        if (currentChild.Object.targetObjects.Length == 1)
-                            buttonCallback = () => EditorGUIUtility.PingObject(isMultiple ? currentChild.UnityObjects[0] : currentChild.UnityObject);
-                        
                         if (currentChild.HasAppliableChanges)
-                            applyCallback = () =>
-                            {
-                                validateChangesOnNextFrame = true;
-                                ApplyChangesToPrefab(currentChild);
-                            };
+                            applyCallback = () => ApplyChangesToPrefab(currentChild);
 
                         if (DrawHeader(name, currentChild.GetHashCode() + name, buttonCallback, applyCallback))
                         {
@@ -469,7 +488,6 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
                             EditorGUI.BeginChangeCheck();
 
                             var serializedObjectChild = currentChild.Object;
-                            serializedObjectChild.Update();
 
                             foreach (var serializedProperty in currentChild.Properties)
                             {
@@ -477,10 +495,7 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
                             }
 
                             if (EditorGUI.EndChangeCheck())
-                            {
                                 serializedObjectChild.ApplyModifiedProperties();
-                                validateChangesOnNextFrame = true;
-                            }
 
                             EndContents();
                         }
@@ -523,7 +538,7 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
         bool isPath = _currentSearchedQuery.Contains('.');
         var objects = _objectsToFilter;
 
-        for (int i = 0; i < objects.Length; i++)
+        for (int i = objects.Length - 1; i >= 0; i--)
         {
             var currentObject = objects[i];
             var serializedObject = new SerializedObject(currentObject);
@@ -581,7 +596,7 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
 
         var objects = _objectsToFilter;
 
-        for (int i = 0; i < objects.Length; i++)
+        for (int i = objects.Length - 1; i >= 0; i--)
         {
             var currentObject = objects[i];
             var serializedObject = new SerializedObject(currentObject);
@@ -737,6 +752,7 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
 
     bool ValidateIfCanApply(DrawableProperty property)
     {
+        property.HasAppliableChanges = false;
         for (int i = 0; i < property.Properties.Count; i++)
         {
             var currentProperty = property.Properties[i];
@@ -781,7 +797,10 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
                     continue;
             }
 
-            PrefabUtility.ReplacePrefab(instance, PrefabUtility.GetPrefabParent(instance), ReplacePrefabOptions.ConnectToPrefab);
+            var prefab = PrefabUtility.GetPrefabParent(instance);
+            if (prefab == null)
+                continue;
+            PrefabUtility.ReplacePrefab(instance, prefab, ReplacePrefabOptions.ConnectToPrefab);
         }
 
         property.HasAppliableChanges = false;
@@ -834,6 +853,43 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
         }
 
         return contains;
+    }
+
+    private Action GetObjectToHight(DrawableProperty property)
+    {
+        var isMultiple = !(property.UnityObjects == null || property.UnityObjects.Count == 0);
+
+        if (isMultiple && property.UnityObjects.Count > 1)
+            return null;
+
+        Object toHighlight = null;
+        if (isMultiple)
+            toHighlight = property.Object.targetObjects[0];
+        else
+            toHighlight = property.Object.targetObject;
+
+        Component comp = toHighlight as Component;
+        if (comp != null)
+            toHighlight = comp.gameObject;
+
+        return () => EditorGUIUtility.PingObject(toHighlight);
+    }
+
+    private void UpdateAllProperties()
+    {
+        for (int i = 0; i < _drawable.Count; i++)
+        {
+            UpdateProperties(_drawable[i]);
+        }
+    }
+
+    private void UpdateProperties(DrawableProperty drawable)
+    {
+        drawable.Object.Update();
+        for (int i = 0; i < drawable.Childs.Count; i++)
+        {
+            UpdateProperties(drawable.Childs[i]);
+        }
     }
 
     #endregion
@@ -926,6 +982,7 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
 
         if (locked != _locked)
         {
+            _locked = locked;
             _lockedObjects = Selection.objects;
             FilterSelected();
         }
