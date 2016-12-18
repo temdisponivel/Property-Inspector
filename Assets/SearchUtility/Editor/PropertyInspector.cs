@@ -7,7 +7,7 @@ using UnityEditor;
 using Object = UnityEngine.Object;
 
 [ExecuteInEditMode]
-public class SearchUtility : EditorWindow, IHasCustomMenu
+public class PropertyInspector : EditorWindow, IHasCustomMenu
 {
     #region Inner type
 
@@ -67,6 +67,8 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
     private bool _locked;
     private bool _inspectorMode;
     private bool _showHidden;
+
+    private bool _applyAll;
 
     private const string Version = "0.0.0.1";
 
@@ -145,7 +147,8 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
                 var textToLoad = "icons/ViewToolZoom.png";
                 if (EditorGUIUtility.isProSkin)
                     textToLoad = "icons/d_ViewToolZoom.png";
-                _titleGUIContentCache = new GUIContent("Search Utility", EditorGUIUtility.Load(textToLoad) as Texture2D);
+                
+                _titleGUIContentCache = new GUIContent("Property Inspector", EditorGUIUtility.Load(textToLoad) as Texture2D, "Show all properties when search is empty");
             }
 
             return _titleGUIContentCache;
@@ -215,24 +218,24 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
 
     #region Init
 
-    [MenuItem("Window/Search Utility Popup &f")]
+    [MenuItem("Window/Property Inspector Popup &f")]
     private static void Init()
     {
-        var window = CreateInstance<SearchUtility>();
+        var window = CreateInstance<PropertyInspector>();
         window._openedAdUtility = true;
         SetupInfo(window);
         window.ShowUtility();
     }
 
-    [MenuItem("Window/Search Utility Window")]
+    [MenuItem("Window/Property Inspector Window")]
     private static void InitWindow()
     {
-        var window = CreateInstance<SearchUtility>();
+        var window = CreateInstance<PropertyInspector>();
         SetupInfo(window);
         window.Show();
     }
 
-    static void SetupInfo(SearchUtility window)
+    static void SetupInfo(PropertyInspector window)
     {
         window.titleContent = _titleGUIContentCache;
         window._focus = true;
@@ -335,6 +338,8 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
 
         GUILayout.FlexibleSpace();
 
+        _applyAll = GUILayout.Button(new GUIContent("Apply all", tooltip: "Apply all instance changes to prefabs"));
+
         _showAll = GUILayout.Button(_expandGUIContent, "miniButtonLeft");
         _collapseAll = GUILayout.Button(_collapseGUIContent, "miniButtonRight");
 
@@ -408,7 +413,14 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
     private void OnGUI()
     {
         if (Event.current.type == EventType.Layout)
+        {
+            if (_applyAll)
+            {
+                ApplyAll();
+                _applyAll = false;
+            }
             ValidaIfCanApplyAll();
+        }
 
         UpdateAllProperties();
 
@@ -742,6 +754,16 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
             drawableType.PropertiesPaths.Add(propertiesPath);
     }
 
+    private void ApplyAll()
+    {
+        for (int i = 0; i < _drawable.Count; i++)
+        {
+            var current = _drawable[i];
+            if (current.HasAppliableChanges)
+                ApplyChangesToPrefab(current);
+        }
+    }
+
     private void ValidaIfCanApplyAll()
     {
         for (int i = 0; i < _drawable.Count; i++)
@@ -1000,7 +1022,7 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
 
     public void ShowHelp()
     {
-        var title = ("About Search Utility v." + Version);
+        var title = ("About Property Inspector v." + Version);
         const string Bullet = "\u2022\u00A0";
         var message =
             Bullet + "Type something into the search box to filter properties inside selected objects/components.\n" +
