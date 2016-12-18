@@ -122,7 +122,7 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
         get
         {
             if (_highlightGuiContentCache == null)
-                _highlightGuiContentCache = new GUIContent(EditorGUIUtility.Load("icons/d_UnityEditor.HierarchyWindow.png") as Texture2D, "Highlight object");
+                _highlightGuiContentCache = new GUIContent(EditorGUIUtility.Load("icons/d_UnityEditor.HierarchyWindow.png") as Texture2D,"Highlight object");
 
 			return _highlightGuiContentCache;
         }
@@ -216,6 +216,7 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
         window._focus = true;
         window.FilterSelected();
         window.wantsMouseMove = true;
+		window.autoRepaintOnSceneChange = true;
         window.minSize = new Vector2(400, window.minSize.y);
 
         window._showHidden = EditorPrefs.GetBool(ShowHiddenKey, false);
@@ -226,7 +227,13 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
     void OnSelectionChange()
     {
         FilterSelected();
+		Repaint ();
     }
+
+	void OnInspectorUpdate() 
+	{
+		Repaint();
+	}
 
     void OnFocus()
     {
@@ -266,12 +273,18 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
         EditorGUILayout.BeginHorizontal();
 
         GUI.SetNextControlName(SearchFieldName);
-        _currentSearchedQuery = EditorGUILayout.TextField("", _currentSearchedQuery, "ToolbarSeachTextField", GUILayout.Width(position.width - 25));
 
-        if (GUILayout.Button(GUIContent.none, "ToolbarSeachCancelButton"))
-        {
-            _currentSearchedQuery = string.Empty;
-        }
+		_currentSearchedQuery = EditorGUILayout.TextField(_currentSearchedQuery, (GUIStyle) "ToolbarSeachTextField", GUILayout.Width(position.width - 25));
+
+		var style = "ToolbarSeachCancelButtonEmpty";
+		if (!string.IsNullOrEmpty(_currentSearchedQuery))
+			style = "ToolbarSeachCancelButton";
+
+		if (GUILayout.Button(GUIContent.none, style))
+		{
+			_currentSearchedQuery = string.Empty;
+			GUIUtility.keyboardControl = 0;
+		}
 
         EditorGUILayout.EndHorizontal();
 
@@ -331,10 +344,10 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
         {
             if (Event.current != null)
             {
-                if (Event.current.type == EventType.keyDown && Event.current.keyCode == KeyCode.Escape)
+				if (Event.current.type == EventType.keyDown && Event.current.keyCode == KeyCode.Escape)
                 {
-                    Close();
-                    return;
+					Close ();
+					return;
                 }
             }
         }
@@ -351,6 +364,8 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
                 _timeToSearchAgain = EditorApplication.timeSinceStartup + .5f;
             }
         }
+
+		Repaint ();
     }
 
     private void OnGUI()
@@ -383,7 +398,13 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
             else if (_collapseAll)
                 EditorPrefs.SetBool(current.GetHashCode() + name, false);
 
-            if (DrawHeader(name, current.GetHashCode() + name, true, () => EditorGUIUtility.PingObject(isMultiple ? current.UnityObjects[0] : current.UnityObject)))
+			var headerResult = false;
+			if (current.Object.targetObjects.Length > 1)
+				headerResult = DrawHeader (name, current.GetHashCode () + name, false);
+			else
+				headerResult = DrawHeader(name, current.GetHashCode() + name, true, () => EditorGUIUtility.PingObject(isMultiple ? current.UnityObjects[0] : current.UnityObject));
+
+			if (headerResult)
             {
                 BeginContents();
 
@@ -408,8 +429,14 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
                             EditorPrefs.SetBool(currentChild.GetHashCode() + name, true);
                         else if (_collapseAll)
                             EditorPrefs.SetBool(currentChild.GetHashCode() + name, false);
+						
+						headerResult = false;
+						if (current.Object.targetObjects.Length > 1)
+							headerResult = DrawHeader (name, current.GetHashCode () + name, false);
+						else
+							headerResult = DrawHeader(currentChild.UnityObject.GetType().Name, currentChild.GetHashCode() + name, true, () => EditorGUIUtility.PingObject(current.UnityObject));
 
-                        if (DrawHeader(currentChild.UnityObject.GetType().Name, currentChild.GetHashCode() + name, true, () => EditorGUIUtility.PingObject(isMultiple ? current.UnityObjects[0] : current.UnityObject)))
+						if (headerResult)
                         {
                             BeginContents();
 
@@ -538,13 +565,13 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
             else
             {
                 FilterProperties(null, drawable, serializedObject, iterator, searchAsLow, isPath);
-                AddObjectsAndProperties(drawables, drawable, currentObject);
+                //AddObjectsAndProperties(drawables, drawable, currentObject);
             }
 
-            if (HandleProgressBar(i / objects.Length))
-                break;
-
             AddObjectsAndProperties(drawables, drawable, currentObject);
+
+			if (HandleProgressBar(i / objects.Length))
+				break;
 
             var currentGameObject = currentObject as GameObject;
             if (currentGameObject != null)
@@ -617,7 +644,7 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
                 stepInto = false;
                 continue;
             }
-
+            
             stepInto = iterator.hasChildren && !iterator.isArray && iterator.propertyType == SerializedPropertyType.Generic;
 
             if (child.PropertiesPaths.Contains(iterator.propertyPath))
@@ -777,9 +804,7 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
 
         if (drawButton)
         {
-            GUILayout.FlexibleSpace();
-
-            if (GUILayout.Button(_highlightGUIContent))
+			if (!GUILayout.Toggle(true, _highlightGUIContent, "dragtab", GUILayout.Width(35)))
             {
                 if (onButtonClick != null)
                     onButtonClick();
@@ -799,7 +824,13 @@ public class SearchUtility : EditorWindow, IHasCustomMenu
 
     void ShowButton(Rect position)
     {
-        _locked = GUI.Toggle(position, _locked, GUIContent.none, "IN LockButton");
+		var locked = GUI.Toggle(position, _locked, GUIContent.none, "IN LockButton");
+
+		if (locked != _locked) 
+		{
+			_lockedObjects = Selection.objects;
+			FilterSelected();
+		}	
     }
 
     public void AddItemsToMenu(GenericMenu menu)
