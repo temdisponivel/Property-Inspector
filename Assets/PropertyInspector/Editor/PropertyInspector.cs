@@ -39,6 +39,18 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         public List<DrawableProperty> Childs { get; set; }
         public bool HasAppliableChanges { get; set; }
 
+        private Editor _customEditor;
+        public Editor CustomEditor
+        {
+            get
+            {
+                if (_customEditor == null)
+                    _customEditor = Editor.CreateEditor(UnityObjects.ToArray());
+
+                return _customEditor;
+            }
+        }
+
         public bool HasDestroyedObject()
         {
             if (Object.targetObjects.Length > 0)
@@ -60,6 +72,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
     private const string ShowHiddenKey = "SUSHOWHIDDEN";
     private const string InspectorModeKey = "SUINSPECTORMODE";
     private const string MultipleEditKey = "MultipleEditKey";
+    private const string UseCustomInspectorKey = "UseCustomInspectorKey";
 
     public bool _openedAdUtility { get; set; }
 
@@ -85,7 +98,16 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
     private bool _applyAll;
     private bool _revertAll;
 
+    private bool _useCustomEditor;
+
+    private static bool _ignoreTransform = false;
+
     private const string Version = "0.0.0.1";
+
+    private bool _useCustomEditorToDraw
+    {
+        get { return _useCustomEditor && string.IsNullOrEmpty(_currentSearchedQuery) && _inspectorMode; }
+    }
 
     private string _currentSearchedAsLower
     {
@@ -261,6 +283,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         window._showHidden = EditorPrefs.GetBool(ShowHiddenKey + window._openedAdUtility, false);
         window._inspectorMode = EditorPrefs.GetBool(InspectorModeKey + window._openedAdUtility, false);
         window._multipleEdit = EditorPrefs.GetBool(MultipleEditKey + window._openedAdUtility, false);
+        window._useCustomEditor = EditorPrefs.GetBool(UseCustomInspectorKey + window._openedAdUtility, true);
 
         window.FilterSelected();
     }
@@ -354,7 +377,8 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
         var edit = EditorGUILayout.ToggleLeft(new GUIContent("Multiple edit", tooltip: "Edit multiple objects as one"), _multipleEdit, GUILayout.MaxWidth(100));
         var showHidden = EditorGUILayout.ToggleLeft("Show hidden", _showHidden, GUILayout.MaxWidth(100));
-        var inspectorMode = EditorGUILayout.ToggleLeft(new GUIContent("Inspector mode", tooltip: "Show all properties when search query is empty (slow when viewing numerous objects without query)"), _inspectorMode, GUILayout.MaxWidth(150));
+        var inspectorMode = EditorGUILayout.ToggleLeft(new GUIContent("Inspector mode", tooltip: "Show all properties when search query is empty (slow when viewing numerous objects without query)"), _inspectorMode, GUILayout.MaxWidth(130));
+        var customEditor = EditorGUILayout.ToggleLeft(new GUIContent("Custom editor", tooltip: ""), _useCustomEditor, GUILayout.MaxWidth(150));
 
         GUILayout.FlexibleSpace();
 
@@ -398,6 +422,13 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         {
             filter = true;
             EditorPrefs.SetBool(ShowHiddenKey + _openedAdUtility, showHidden);
+        }
+
+        if (customEditor != _useCustomEditor)
+        {
+            filter = true;
+            EditorPrefs.SetBool(UseCustomInspectorKey + _openedAdUtility, customEditor);
+            _useCustomEditor = customEditor;
         }
 
         _inspectorMode = inspectorMode;
@@ -481,7 +512,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
             var current = _drawable[i];
 
             var name = string.Format("{0} (Multiples ({1}))", current.Type, current.Object.targetObjects.Length);
-            bool isMultiple = !(current.UnityObjects == null || current.UnityObjects.Count == 0);
+            bool isMultiple = !(current.UnityObjects == null || current.UnityObjects.Count <= 1);
             if (!isMultiple)
                 name = current.UnityObject.name;
 
@@ -507,9 +538,18 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
                 EditorGUI.BeginChangeCheck();
 
                 var serializedObject = current.Object;
-                foreach (var serializedProperty in current.Properties)
+
+
+                if (_useCustomEditorToDraw && current.CustomEditor != null)
                 {
-                    EditorGUILayout.PropertyField(serializedProperty, true);
+                    current.CustomEditor.OnInspectorGUI();
+                }
+                else
+                {
+                    foreach (var serializedProperty in current.Properties)
+                    {
+                        EditorGUILayout.PropertyField(serializedProperty, true);
+                    }
                 }
 
                 if (EditorGUI.EndChangeCheck())
@@ -523,7 +563,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
                         name = string.Format("{0} (Multiple ({1}))", currentChild.Type, currentChild.Object.targetObjects.Length);
 
-                        isMultiple = !(currentChild.UnityObjects == null || currentChild.UnityObjects.Count == 0);
+                        isMultiple = !(currentChild.UnityObjects == null || currentChild.UnityObjects.Count <= 1);
                         if (!isMultiple)
                             name = currentChild.UnityObject.GetType().Name;
 
@@ -550,9 +590,16 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
                             var serializedObjectChild = currentChild.Object;
 
-                            foreach (var serializedProperty in currentChild.Properties)
+                            if (_useCustomEditorToDraw && currentChild.CustomEditor != null)
                             {
-                                EditorGUILayout.PropertyField(serializedProperty, true);
+                                currentChild.CustomEditor.OnInspectorGUI();
+                            }
+                            else
+                            {
+                                foreach (var serializedProperty in currentChild.Properties)
+                                {
+                                    EditorGUILayout.PropertyField(serializedProperty, true);
+                                }
                             }
 
                             if (EditorGUI.EndChangeCheck())
@@ -637,7 +684,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
                 for (int j = 0; j < components.Length; j++)
                 {
-                    if (components[j].GetType() == typeof(Transform))
+                    if ((components[j].GetType() == typeof(Transform) && _ignoreTransform) || !_useCustomEditorToDraw)
                         continue;
 
                     FilterObject(drawable, components[j], searchAsLow, isPath);
@@ -741,6 +788,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         var drawableChild = new DrawableProperty()
         {
             UnityObject = uObject,
+            UnityObjects = new List<Object>() { uObject },
             Object = childSerializedObject,
         };
 
@@ -761,7 +809,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
             {
                 continue;
             }
-            
+
             if (child.PropertiesPaths.Contains(iterator.propertyPath))
                 continue;
 
