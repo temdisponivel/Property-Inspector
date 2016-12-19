@@ -38,6 +38,19 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         public HashSet<string> PropertiesPaths { get; set; }
         public List<DrawableProperty> Childs { get; set; }
         public bool HasAppliableChanges { get; set; }
+
+        public bool HasDestroyedObject()
+        {
+            if (Object.targetObjects.Length > 0)
+            {
+                for (int i = 0; i < Object.targetObjects.Length; i++)
+                {
+                    if (!Object.targetObjects[i])
+                        return true;
+                }
+            }
+            return Object.targetObject;
+        }
     }
 
     #endregion
@@ -998,8 +1011,13 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
     private void UpdateAllProperties()
     {
-        for (int i = 0; i < _drawable.Count; i++)
+        for (int i = _drawable.Count - 1; i >= 0; i--)
         {
+            if (_drawable[i].HasDestroyedObject())
+            {
+                FilterSelected();
+                break;
+            }
             UpdateProperties(_drawable[i]);
         }
     }
