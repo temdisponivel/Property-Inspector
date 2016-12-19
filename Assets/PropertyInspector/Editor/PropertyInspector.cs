@@ -54,6 +54,8 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
     private Vector2 _scrollPosition = Vector2.zero;
 
+    private Rect _lastDrawPosition;
+
     private bool _focus = false;
     private string _lastSearchedQuery = string.Empty;
     private string _currentSearchedQuery = string.Empty;
@@ -67,8 +69,8 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
     private bool _locked;
     private bool _inspectorMode;
     private bool _showHidden;
-
     private bool _applyAll;
+    private bool _revertAll;
 
     private const string Version = "0.0.0.1";
 
@@ -92,13 +94,13 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
     {
         get
         {
-            if (_currentSearchedQuery.StartsWith("s:"))
+            if (_currentSearchedQuery.StartsWith("s:", StringComparison.OrdinalIgnoreCase))
                 return SearchPattern.StartsWith;
-            else if (_currentSearchedQuery.StartsWith("e:"))
+            else if (_currentSearchedQuery.StartsWith("e:", StringComparison.OrdinalIgnoreCase))
                 return SearchPattern.EndsWith;
-            else if (_currentSearchedQuery.StartsWith("m:"))
+            else if (_currentSearchedQuery.StartsWith("m:", StringComparison.OrdinalIgnoreCase))
                 return SearchPattern.Match;
-            else if (_currentSearchedQuery.StartsWith("t:"))
+            else if (_currentSearchedQuery.StartsWith("t:", StringComparison.OrdinalIgnoreCase))
                 return SearchPattern.Type;
             else
                 return SearchPattern.Contains;
@@ -147,8 +149,8 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
                 var textToLoad = "icons/ViewToolZoom.png";
                 if (EditorGUIUtility.isProSkin)
                     textToLoad = "icons/d_ViewToolZoom.png";
-                
-                _titleGUIContentCache = new GUIContent("Property Inspector", EditorGUIUtility.Load(textToLoad) as Texture2D, "Show all properties when search is empty");
+
+                _titleGUIContentCache = new GUIContent("Property Inspector", EditorGUIUtility.Load(textToLoad) as Texture2D);
             }
 
             return _titleGUIContentCache;
@@ -237,7 +239,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
     static void SetupInfo(PropertyInspector window)
     {
-        window.titleContent = _titleGUIContentCache;
+        window.titleContent = _titleGUIContent;
         window._focus = true;
         window.wantsMouseMove = true;
         window.autoRepaintOnSceneChange = true;
@@ -252,9 +254,13 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
     void OnSelectionChange()
     {
-        if (!_locked)
+        if (_locked)
+            ValidaIfCanApplyAll();
+        else
             FilterSelected();
+
         Repaint();
+
     }
 
     void OnInspectorUpdate()
@@ -264,7 +270,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
     void OnFocus()
     {
-        //FilterSelected();
+        FilterSelected();
         Repaint();
         _focus = true;
     }
@@ -284,7 +290,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         GUILayout.Space(5);
         EditorGUILayout.BeginHorizontal();
 
-        EditorGUILayout.LabelField(_titleGUIContent, "LargeLabel");
+        EditorGUILayout.LabelField(_titleGUIContent);
 
         GUILayout.FlexibleSpace();
 
@@ -339,7 +345,22 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
         GUILayout.FlexibleSpace();
 
-        _applyAll = GUILayout.Button(new GUIContent("Apply all", tooltip: "Apply all instance changes to prefabs"));
+        var changed = false;
+        for (int i = 0; i < _drawable.Count; i++)
+        {
+            if (_drawable[i].HasAppliableChanges)
+            {
+                changed = true;
+                break;
+            }
+        }
+
+        if (!changed)
+            GUI.enabled = false;
+        _applyAll = GUILayout.Button(new GUIContent("Apply all", tooltip: changed ? "Apply all instance changes to prefabs" : "There's no changes to apply"));
+        _revertAll = GUILayout.Button(new GUIContent("Revert all", tooltip: changed ? "Revert all instance changes to prefabs" : "There's no changes to revert"));
+        if (!changed)
+            GUI.enabled = true;
 
         _showAll = GUILayout.Button(_expandGUIContent, "miniButtonLeft");
         _collapseAll = GUILayout.Button(_collapseGUIContent, "miniButtonRight");
@@ -420,6 +441,12 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
                 ApplyAll();
                 _applyAll = false;
             }
+            else if (_revertAll)
+            {
+                RevertAll();
+                _revertAll = false;
+            }
+
             ValidaIfCanApplyAll();
         }
 
@@ -452,11 +479,15 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
             Action buttonCallback = GetObjectToHight(current);
             Action applyCallback = null;
+            Action revertCallback = null;
 
             if (current.HasAppliableChanges)
+            {
                 applyCallback = () => ApplyChangesToPrefab(current);
+                revertCallback = () => RevertChangesToPrefab(current);
+            }
 
-            if (DrawHeader(name, current.GetHashCode() + name, buttonCallback, applyCallback))
+            if (DrawHeader(name, current.GetHashCode() + name, buttonCallback, applyCallback, revertCallback))
             {
                 BeginContents();
 
@@ -490,11 +521,15 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
                         buttonCallback = GetObjectToHight(currentChild);
                         applyCallback = null;
+                        revertCallback = null;
 
                         if (currentChild.HasAppliableChanges)
+                        {
                             applyCallback = () => ApplyChangesToPrefab(currentChild);
+                            revertCallback = () => RevertChangesToPrefab(currentChild);
+                        }
 
-                        if (DrawHeader(name, currentChild.GetHashCode() + name, buttonCallback, applyCallback))
+                        if (DrawHeader(name, currentChild.GetHashCode() + name, buttonCallback, applyCallback, revertCallback))
                         {
                             BeginContents();
 
@@ -511,11 +546,21 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
                                 serializedObjectChild.ApplyModifiedProperties();
 
                             EndContents();
+
+                            UpdateLastRectDraw();
+
+                            if (ShouldSkipDrawing())
+                                break;
                         }
                     }
                 }
 
                 EndContents();
+
+                UpdateLastRectDraw();
+
+                if (ShouldSkipDrawing())
+                    break;
             }
         }
 
@@ -755,16 +800,6 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
             drawableType.PropertiesPaths.Add(propertiesPath);
     }
 
-    private void ApplyAll()
-    {
-        for (int i = 0; i < _drawable.Count; i++)
-        {
-            var current = _drawable[i];
-            if (current.HasAppliableChanges)
-                ApplyChangesToPrefab(current);
-        }
-    }
-
     private void ValidaIfCanApplyAll()
     {
         for (int i = 0; i < _drawable.Count; i++)
@@ -798,6 +833,16 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         return property.HasAppliableChanges;
     }
 
+    private void ApplyAll()
+    {
+        for (int i = 0; i < _drawable.Count; i++)
+        {
+            var current = _drawable[i];
+            if (current.HasAppliableChanges)
+                ApplyChangesToPrefab(current);
+        }
+    }
+
     void ApplyChangesToPrefab(DrawableProperty property)
     {
         List<Object> objects = new List<Object>();
@@ -820,13 +865,66 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
                     continue;
             }
 
-            var prefab = PrefabUtility.GetPrefabParent(instance);
-            if (prefab == null)
-                continue;
-            PrefabUtility.ReplacePrefab(instance, prefab, ReplacePrefabOptions.ConnectToPrefab);
+            var instanceRoot = PrefabUtility.FindRootGameObjectWithSameParentPrefab(instance);
+            var targetPrefab = PrefabUtility.GetPrefabParent(instanceRoot);
+
+            if (targetPrefab == null)
+                return;
+
+            PrefabUtility.ReplacePrefab(
+                instanceRoot,
+                targetPrefab,
+                ReplacePrefabOptions.ConnectToPrefab
+            );
         }
 
         property.HasAppliableChanges = false;
+        GUIUtility.keyboardControl = 0;
+    }
+
+    private void RevertAll()
+    {
+        for (int i = 0; i < _drawable.Count; i++)
+        {
+            var current = _drawable[i];
+            if (current.HasAppliableChanges)
+                RevertChangesToPrefab(current);
+        }
+    }
+
+    void RevertChangesToPrefab(DrawableProperty property)
+    {
+        List<Object> objects = new List<Object>();
+
+        objects.AddRange(property.UnityObjects);
+
+        if (property.UnityObject != null)
+            objects.Add(property.UnityObject);
+
+        for (int i = 0; i < objects.Count; i++)
+        {
+            var instance = objects[i] as GameObject;
+            if (instance == null)
+            {
+                var component = objects[i] as Component;
+                if (component != null)
+                    instance = component.gameObject;
+
+                if (instance == null)
+                    continue;
+            }
+
+            var instanceRoot = PrefabUtility.FindRootGameObjectWithSameParentPrefab(instance);
+            var targetPrefab = PrefabUtility.GetPrefabParent(instanceRoot);
+
+            if (targetPrefab == null)
+                return;
+
+            PrefabUtility.RevertPrefabInstance(instanceRoot);
+        }
+
+        property.HasAppliableChanges = false;
+        GUIUtility.keyboardControl = 0;
     }
 
     #endregion
@@ -915,6 +1013,26 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         }
     }
 
+    private void UpdateLastRectDraw()
+    {
+        if (Event.current.type == EventType.repaint)
+        {
+            _lastDrawPosition = GUILayoutUtility.GetLastRect();
+        }
+    }
+
+    private bool ShouldSkipDrawing()
+    {
+        if (Event.current.type == EventType.repaint)
+        {
+            var pos = position;
+            pos.position = _scrollPosition;
+            return _lastDrawPosition.yMax >= pos.yMax;
+        }
+
+        return false;
+    }
+
     #endregion
 
     #region UI
@@ -952,7 +1070,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         GUILayout.Space(3f);
     }
 
-    static public bool DrawHeader(string text, string key, Action onButtonClick = null, Action onApplyCallback = null)
+    static public bool DrawHeader(string text, string key, Action onButtonClick = null, Action onApplyCallback = null, Action onRevertCallback = null)
     {
         var state = EditorPrefs.GetBool(key, true);
 
@@ -972,21 +1090,37 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         if (!GUILayout.Toggle(true, text, "dragtab", GUILayout.MinWidth(20f), GUILayout.ExpandWidth(true)))
             state = !state;
 
-        if (onApplyCallback != null)
+        if (onApplyCallback == null)
+            GUI.enabled = false;
+        if (!GUILayout.Toggle(true, new GUIContent("Apply", tooltip: GUI.enabled ? "Apply changes to prefab" : "There's no changes to apply"), "dragtab", GUILayout.Width(50)))
         {
-            if (!GUILayout.Toggle(true, new GUIContent("Apply"), "dragtab", GUILayout.Width(50)))
-            {
+            if (onApplyCallback != null)
                 onApplyCallback();
-            }
         }
+        GUI.enabled = true;
 
-        if (onButtonClick != null)
+        if (onRevertCallback == null)
+            GUI.enabled = false;
+        if (!GUILayout.Toggle(true, new GUIContent("Revert", tooltip: GUI.enabled ? "Revert changes" : "There's no changes to revert"), "dragtab", GUILayout.Width(60)))
         {
-            if (!GUILayout.Toggle(true, _highlightGUIContent, "dragtab", GUILayout.Width(35)))
-            {
-                onButtonClick();
-            }
+            if (onRevertCallback != null)
+                onRevertCallback();
         }
+        GUI.enabled = true;
+
+        var toolTip = "Highlight object";
+        if (onButtonClick == null)
+        {
+            GUI.enabled = false;
+            toolTip = "Can't highlight multiple objects";
+        }
+        _highlightGUIContent.tooltip = toolTip;
+        if (!GUILayout.Toggle(true, _highlightGUIContent, "dragtab", GUILayout.Width(35)))
+        {
+            if (onButtonClick != null)
+                onButtonClick();
+        }
+        GUI.enabled = true;
 
         if (GUI.changed)
             EditorPrefs.SetBool(key, state);
