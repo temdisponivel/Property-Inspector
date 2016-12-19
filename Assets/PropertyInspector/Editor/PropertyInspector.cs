@@ -756,14 +756,12 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         bool stepInto = true;
         while (iterator.Next(stepInto))
         {
+            stepInto = false;
             if (!_showHidden && !iterator.editable)
             {
-                stepInto = false;
                 continue;
             }
-
-            stepInto = iterator.hasChildren && !iterator.isArray && iterator.propertyType == SerializedPropertyType.Generic;
-
+            
             if (child.PropertiesPaths.Contains(iterator.propertyPath))
                 continue;
 
