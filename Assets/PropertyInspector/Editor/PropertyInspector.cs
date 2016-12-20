@@ -1403,32 +1403,24 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
     {
         var title = ("About Property Inspector v." + Version);
         var message = @"Use the search bar to filter a property.
-                        You can use the prefixed: “s:”, “e:”, “t:”.
-                        Where:
-                        “s:”: Starts with - will show only properties whose names starts with the text typed.
-                        “e:”: Ends with - will show only properties whose names ends with the text typed.
-                        “t:”: Type - will show only properties whose type match the text typed.
-
-                        None of those options are case sensitive.
-
-                        You can search using the path of the property you want to see.For example: Player.HealthHandler.Life would only show the property Life of the property HealthHandler of the property Player.  This options IS case sensitive.
-
-                        Multi-edit group objects and components by type and lets you edit multiple objects as if they were one. All changes made on this mode affect all object in the group.
-
-                        Show hidden shows non editable properties - most common in scriptable objects.
-
-                        Inspector mode will show all properties of all object when there’s no search typed.
-
-                        Apply all/Revert all will apply or revert all changes made in objects that are instances of prefabs.
-
-                        Apply/Revert buttons in headers will apply or revert changes made in that object.
-
-                        Highlight button highlights the objects in the hierarchy or project.
-
-                        If you have any question, ran into bug or problem or have a suggestion please don’t hesitate in contating me at: temdisponivel@gmail.com.
-
-                        For more info, please see the pdf file inside PropertyInspector’s folder or visit: http://goo.gl/kyX3A3
-                        ";
+You can use the prefixed: “s:”, “e:”, “t:”.
+“s:”: Starts with - will show only properties whose names starts with the text typed.
+“e:”: Ends with - will show only properties whose names ends with the text typed.
+“t:”: Type - will show only properties whose type match the text typed.
+None of those options are case sensitive.
+You can search using the path of the property you want to see.
+For example: 'Player.HealthHandler.Life' would only show the property Life of HealthHandler of Player.  
+These options ARE case sensitive.
+Multi-edit group objects and components by type and lets you edit multiple objects as if they were one. 
+All changes made on this mode affect all object in the group.
+Inspector mode will show all properties of all object when there’s no search typed.
+Apply all/Revert all will apply or revert all changes made in objects that are instances of prefabs.
+Apply/Revert buttons in headers will apply or revert changes made in that object.
+Highlight button highlights the objects in the hierarchy or project.
+All changes made with Property Inspector can be undone (CTRL + Z | CMD + Z) - except apply/revert.
+If you have any question, ran into bug or problem or have a suggestion
+please don’t hesitate in contating me at: temdisponivel@gmail.com.
+For more info, please see the pdf file inside PropertyInspector’s folder or visit: http://goo.gl/kyX3A3";
 
         EditorUtility.DisplayDialog(title, message, "OK");
     }
