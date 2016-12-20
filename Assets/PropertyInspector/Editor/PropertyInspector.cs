@@ -81,7 +81,6 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
     private readonly List<DrawableProperty> _drawable = new List<DrawableProperty>();
 
     private const string SearchFieldName = "SearchQuery";
-    private const string ShowHiddenKey = "SUSHOWHIDDEN";
     private const string InspectorModeKey = "SUINSPECTORMODE";
     private const string MultipleEditKey = "MultipleEditKey";
 
@@ -99,9 +98,9 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
     private bool _multipleEdit;
     private bool _locked;
     private bool _inspectorMode;
-    private bool _showHidden;
     private bool _applyAll;
     private bool _revertAll;
+    private const string _multiEditHeaderFormat = "{0} ({1})";
 
     private readonly Version Version = new Version(1, 0, 0, 0);
 
@@ -305,7 +304,6 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         window.autoRepaintOnSceneChange = true;
         window.minSize = new Vector2(400, window.minSize.y);
 
-        window._showHidden = EditorPrefs.GetBool(ShowHiddenKey + window._openedAsUtility, false);
         window._inspectorMode = EditorPrefs.GetBool(InspectorModeKey + window._openedAsUtility, false);
         window._multipleEdit = EditorPrefs.GetBool(MultipleEditKey + window._openedAsUtility, false);
 
@@ -380,7 +378,6 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         EditorGUILayout.BeginHorizontal();
 
         var edit = EditorGUILayout.ToggleLeft(new GUIContent("Mult-edit", tooltip: "Edit multiple objects as one"), _multipleEdit, GUILayout.MaxWidth(80));
-        var showHidden = EditorGUILayout.ToggleLeft("Show hidden", _showHidden, GUILayout.MaxWidth(100));
         var inspectorMode = EditorGUILayout.ToggleLeft(new GUIContent("Inspector mode", tooltip: "Show all properties when search query is empty (slow when viewing numerous objects without query)"), _inspectorMode, GUILayout.MaxWidth(150));
 
         GUILayout.FlexibleSpace();
@@ -421,14 +418,8 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
             EditorPrefs.SetBool(InspectorModeKey + _openedAsUtility, inspectorMode);
         }
 
-        if (showHidden != _showHidden)
-        {
-            filter = true;
-            EditorPrefs.SetBool(ShowHiddenKey + _openedAsUtility, showHidden);
-        }
 
         _inspectorMode = inspectorMode;
-        _showHidden = showHidden;
         _multipleEdit = edit;
 
         if (filter)
@@ -564,8 +555,12 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         {
             var current = _drawable[i];
 
+            var typeName = string.Empty;
+            if (current.Type != null)
+                typeName = current.Type.Name;
+
             // if it's editing multiple objects, change name
-            var name = string.Format("{0} (Multiple ({1}))", current.Type, current.Object.targetObjects.Length);
+            var name = string.Format(_multiEditHeaderFormat, typeName, current.Object.targetObjects.Length);
             bool isMultiple = !(current.UnityObjects == null || current.UnityObjects.Count == 0);
             if (!isMultiple)
                 name = current.UnityObject.name;
@@ -595,7 +590,14 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
                 var serializedObject = current.Object;
                 foreach (var serializedProperty in current.Properties)
                 {
-                    EditorGUILayout.PropertyField(serializedProperty, true);
+                    try
+                    {
+                        EditorGUILayout.PropertyField(serializedProperty, true);
+                    }
+                    catch
+                    {
+
+                    }
                 }
 
                 // if the player has altered the object between BeginChangeCheck and this point,
@@ -611,7 +613,12 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
                     {
                         var currentChild = current.Childs[j];
 
-                        name = string.Format("{0} (Multiple ({1}))", currentChild.Type, currentChild.Object.targetObjects.Length);
+                        typeName = string.Empty;
+                        if (currentChild.Type != null)
+                            typeName = currentChild.Type.Name;
+
+                        // if it's editing multiple objects, change name
+                        name = string.Format(_multiEditHeaderFormat, typeName, current.Object.targetObjects.Length);
 
                         isMultiple = !(currentChild.UnityObjects == null || currentChild.UnityObjects.Count == 0);
                         if (!isMultiple)
@@ -736,9 +743,6 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
                 for (int j = 0; j < components.Length; j++)
                 {
-                    if (components[j].GetType() == typeof(Transform))
-                        continue;
-
                     // if it's not a Transform - this is necessary because - for some reason - Unity doesn't like to use PropertyField with transforms
                     // Filter and add the resulting drawable property as child of the game object drawable property
                     FilterObject(drawable, components[j], searchAsLow, isPath);
@@ -805,9 +809,6 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
                 for (int j = 0; j < components.Length; j++)
                 {
-                    if (components[j].GetType() == typeof(Transform))
-                        continue;
-
                     var drawableChild = FilterObject(drawable, components[j], searchAsLow, isPath);
                     AddObjectsAndProperties(drawables, drawableChild, components[j]);
                 }
@@ -874,14 +875,9 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         bool stepInto = true;
 
         // Get the next property on this level (never go deeper inside a property)
-        while (iterator.Next(stepInto))
+        while (iterator.NextVisible(stepInto))
         {
             stepInto = false;
-            // if it's a non editable and we should NOT show hidden, go to next property
-            if (!_showHidden && !iterator.editable)
-            {
-                continue;
-            }
 
             // if this drawable already have this property saved
             if (child.PropertiesPaths.Contains(iterator.propertyPath))
@@ -891,7 +887,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
             SerializedProperty property;
             if (Compare(iterator, search, isPath))
             {
-                property = serializedObject.FindProperty(iterator.propertyPath);
+                property = iterator.Copy();//serializedObject.FindProperty(iterator.propertyPath);
                 if (property == null)
                     continue;
 
@@ -1427,7 +1423,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
                         Apply/Revert buttons in headers will apply or revert changes made in that object.
 
-                        Highlight button highlights the objects in the hierarchy or proje   ct.
+                        Highlight button highlights the objects in the hierarchy or project.
 
                         If you have any question, ran into bug or problem or have a suggestion please don’t hesitate in contating me at: temdisponivel@gmail.com.
 
