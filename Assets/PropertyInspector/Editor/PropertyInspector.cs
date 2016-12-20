@@ -188,6 +188,24 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         }
     }
 
+    private static GUIContent _tabTitleGUIContentCache;
+    private static GUIContent _tabTitleGUIContent
+    {
+        get
+        {
+            if (_tabTitleGUIContentCache == null)
+            {
+                var textToLoad = "icons/ViewToolZoom.png";
+                if (EditorGUIUtility.isProSkin)
+                    textToLoad = "icons/d_ViewToolZoom.png";
+
+                _tabTitleGUIContentCache = new GUIContent("Prop Insp", EditorGUIUtility.Load(textToLoad) as Texture2D);
+            }
+
+            return _tabTitleGUIContentCache;
+        }
+    }
+
     private static GUIContent _helpGUIContentCache;
     private static GUIContent _helpGUIContent
     {
@@ -281,7 +299,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
     /// <param name="window"></param>
     static void SetupInfo(PropertyInspector window)
     {
-        window.titleContent = _titleGUIContent;
+        window.titleContent = _tabTitleGUIContent;
         window._focus = true;
         window.wantsMouseMove = true;
         window.autoRepaintOnSceneChange = true;
@@ -1409,7 +1427,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
                         Apply/Revert buttons in headers will apply or revert changes made in that object.
 
-                        Highlight button highlights the objects in the hierarchy or project.
+                        Highlight button highlights the objects in the hierarchy or proje   ct.
 
                         If you have any question, ran into bug or problem or have a suggestion please don’t hesitate in contating me at: temdisponivel@gmail.com.
 
