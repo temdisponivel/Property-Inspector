@@ -36,7 +36,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
             PropertiesPaths = new HashSet<string>();
         }
 
-        public Object UnityObject { get; set; }
+        //public Object UnityObject { get; set; }
         public List<Object> UnityObjects { get; set; }
         public Type Type { get; set; }
         public SerializedObject Object { get; set; }
@@ -44,6 +44,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         public HashSet<string> PropertiesPaths { get; set; }
         public List<DrawableProperty> Childs { get; set; }
         public bool HasAppliableChanges { get; set; }
+        public Editor CustomEditor { get; set; }
 
         public bool HasDestroyedObject()
         {
@@ -78,11 +79,14 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
     #endregion
 
+    private static int _instances;
+
     private readonly List<DrawableProperty> _drawable = new List<DrawableProperty>();
 
     private const string SearchFieldName = "SearchQuery";
-    private const string InspectorModeKey = "SUINSPECTORMODE";
-    private const string MultipleEditKey = "MultipleEditKey";
+    private const string InspectorModeKey = "InspectorMode";
+    private const string MultipleEditKey = "MultiEdit";
+    private const string UseCustomInspectorsKey = "UseCustomInspectors";
 
     private bool _openedAsUtility { get; set; }
     private Vector2 _scrollPosition = Vector2.zero;
@@ -98,8 +102,11 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
     private bool _multipleEdit;
     private bool _locked;
     private bool _inspectorMode;
+    private bool _useCustomInspectors;
     private bool _applyAll;
     private bool _revertAll;
+    private int _instanceId;
+
     private const string _multiEditHeaderFormat = "{0} ({1})";
 
     private readonly Version Version = new Version(1, 0, 0, 0);
@@ -118,6 +125,11 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
     private bool _forcedShow
     {
         get { return _inspectorMode && string.IsNullOrEmpty(_currentSearchedQuery); }
+    }
+
+    private bool _shouldUseCustomEditors
+    {
+        get { return _inspectorMode && string.IsNullOrEmpty(_currentSearchedQuery) && _useCustomInspectors; }
     }
 
     private SearchPattern SearchPatternToUse
@@ -299,6 +311,8 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
     static void SetupInfo(PropertyInspector window)
     {
         window.titleContent = _tabTitleGUIContent;
+        _instances++;
+        window._instanceId = _instances;
         window._focus = true;
         window.wantsMouseMove = true;
         window.autoRepaintOnSceneChange = true;
@@ -306,6 +320,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
         window._inspectorMode = EditorPrefs.GetBool(InspectorModeKey + window._openedAsUtility, false);
         window._multipleEdit = EditorPrefs.GetBool(MultipleEditKey + window._openedAsUtility, false);
+        window._useCustomInspectors = EditorPrefs.GetBool(UseCustomInspectorsKey + window._openedAsUtility, false);
 
         window.FilterSelected();
     }
@@ -377,8 +392,9 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
         EditorGUILayout.BeginHorizontal();
 
-        var edit = EditorGUILayout.ToggleLeft(new GUIContent("Mult-edit", tooltip: "Edit multiple objects as one"), _multipleEdit, GUILayout.MaxWidth(80));
-        var inspectorMode = EditorGUILayout.ToggleLeft(new GUIContent("Inspector mode", tooltip: "Show all properties when search query is empty (slow when viewing numerous objects without query)"), _inspectorMode, GUILayout.MaxWidth(150));
+        var edit = EditorGUILayout.ToggleLeft(new GUIContent("Multi-edit", tooltip: "Edit multiple objects as one"), _multipleEdit, GUILayout.MaxWidth(70));
+        var inspectorMode = EditorGUILayout.ToggleLeft(new GUIContent("Inspector mode", tooltip: "Show all properties when search query is empty (slow when viewing numerous objects without query)"), _inspectorMode, GUILayout.MaxWidth(110));
+        var customInspector = EditorGUILayout.ToggleLeft(new GUIContent("Custom Inspectors", tooltip: "Show objects and components using its custom (or default) inspectors"), _useCustomInspectors, GUILayout.MaxWidth(125));
 
         GUILayout.FlexibleSpace();
 
@@ -417,10 +433,15 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
             filter = true;
             EditorPrefs.SetBool(InspectorModeKey + _openedAsUtility, inspectorMode);
         }
-
+        if (customInspector != _useCustomInspectors)
+        {
+            filter = true;
+            EditorPrefs.SetBool(UseCustomInspectorsKey + _openedAsUtility, customInspector);
+        }
 
         _inspectorMode = inspectorMode;
         _multipleEdit = edit;
+        _useCustomInspectors = customInspector;
 
         if (filter)
             FilterSelected();
@@ -454,7 +475,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
         if (_lastSearchedQuery != _currentSearchedQuery)
         {
-            if (EditorApplication.timeSinceStartup >= _timeToSearchAgain)
+            if (EditorApplication.timeSinceStartup >= _timeToSearchAgain || string.IsNullOrEmpty(_currentSearchedQuery))
             {
                 FilterSelected();
                 _lastSearchedQuery = _currentSearchedQuery;
@@ -505,6 +526,11 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         }
     }
 
+    void OnDestroy()
+    {
+        _instances--;
+    }
+
     #endregion
 
     #region GUI
@@ -542,12 +568,11 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
         EditorGUILayout.BeginVertical();
         _scrollPosition = EditorGUILayout.BeginScrollView(_scrollPosition, GUILayout.Width(position.width), GUILayout.Height(position.height - 100));
-
-        // this is being called from inside UpdateAllProperties
-        //if (_expandAll)
-        //    ExpandAll();
-        //else if (_collapseAll)
-        //    CollapseAll();
+        
+        if (_expandAll)
+            ExpandAll();
+        else if (_collapseAll)
+            CollapseAll();
 
         // Iterate through all drawables and draw them into the screen
         // This drawable have already been filtereds and are ready to draw
@@ -561,9 +586,8 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
             // if it's editing multiple objects, change name
             var name = string.Format(_multiEditHeaderFormat, typeName, current.Object.targetObjects.Length);
-            bool isMultiple = !(current.UnityObjects == null || current.UnityObjects.Count == 0);
-            if (!isMultiple)
-                name = current.UnityObject.name;
+            if (!_multipleEdit)
+                name = current.UnityObjects[0].name;
 
             // get callbacks for tab buttons
             // this are the callbacks called when user clicks in "Apply", "Revert" or "Highlight" on object header
@@ -580,23 +604,28 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
             // Draw a header if the object name and pass the callback
             // If one of these callbacks is null, the header will disable the button that would trigger it
-            if (DrawHeader(name, current.GetHashCode().ToString(), buttonCallback, applyCallback, revertCallback))
+            if (DrawHeader(name, (current.GetHashCode() + _instanceId).ToString(), buttonCallback, applyCallback, revertCallback))
             {
                 BeginContents();
 
                 EditorGUI.BeginChangeCheck();
 
-                // draw the actual property into the screen
                 var serializedObject = current.Object;
-                foreach (var serializedProperty in current.Properties)
+
+                // if we should use custom inspectors, use it
+                // otherwise, draw every property one by one
+                if (_shouldUseCustomEditors)
                 {
-                    try
+                    // this should not happen, but some reason it does
+                    if (current.CustomEditor != null)
+                        current.CustomEditor.OnInspectorGUI();
+                }
+                else
+                {
+                    // draw the actual property into the screen
+                    foreach (var serializedProperty in current.Properties)
                     {
                         EditorGUILayout.PropertyField(serializedProperty, true);
-                    }
-                    catch
-                    {
-
                     }
                 }
 
@@ -619,11 +648,9 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
                         // if it's editing multiple objects, change name
                         name = string.Format(_multiEditHeaderFormat, typeName, current.Object.targetObjects.Length);
-
-                        isMultiple = !(currentChild.UnityObjects == null || currentChild.UnityObjects.Count == 0);
-                        if (!isMultiple)
-                            name = currentChild.UnityObject.GetType().Name;
-
+                        if (!_multipleEdit)
+                            name = currentChild.UnityObjects[0].GetType().Name;
+                        
                         buttonCallback = GetObjectToHight(currentChild);
                         applyCallback = null;
                         revertCallback = null;
@@ -634,7 +661,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
                             revertCallback = () => RevertChangesToPrefab(currentChild);
                         }
 
-                        if (DrawHeader(name, currentChild.GetHashCode().ToString(), buttonCallback, applyCallback, revertCallback))
+                        if (DrawHeader(name, (currentChild.GetHashCode() + _instanceId).ToString(), buttonCallback, applyCallback, revertCallback))
                         {
                             BeginContents();
 
@@ -642,9 +669,20 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
                             var serializedObjectChild = currentChild.Object;
 
-                            foreach (var serializedProperty in currentChild.Properties)
+                            // if we should use custom inspectors, use it
+                            // otherwise, draw every property one by one
+                            if (_shouldUseCustomEditors)
                             {
-                                EditorGUILayout.PropertyField(serializedProperty, true);
+                                // this should not happen, but some reason it does
+                                if (currentChild.CustomEditor != null)
+                                    currentChild.CustomEditor.OnInspectorGUI();
+                            }
+                            else
+                            {
+                                foreach (var serializedProperty in currentChild.Properties)
+                                {
+                                    EditorGUILayout.PropertyField(serializedProperty, true);
+                                }
                             }
 
                             if (EditorGUI.EndChangeCheck())
@@ -687,12 +725,107 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
     {
         _drawable.Clear();
 
-        if (_multipleEdit)
+        if (_shouldUseCustomEditors)
+            FilterForCustomInspector();
+        else if (_multipleEdit)
             FilterMultiple();
         else
             FilterSingles();
 
         ValidaIfCanApplyAll();
+    }
+
+    /// <summary>
+    /// Filter used for when we should use custom inspectors
+    /// </summary>
+    private void FilterForCustomInspector()
+    {
+        _searching = true;
+
+        var objects = _objectsToFilter;
+
+        // Dictionary that will group drawables by their type
+        Dictionary<Type, DrawableProperty> drawables = null;
+        if (_multipleEdit)
+            drawables = new Dictionary<Type, DrawableProperty>();
+
+        // Iterate through all selected objects
+        for (int i = objects.Length - 1; i >= 0; i--)
+        {
+            var currentObject = objects[i];
+            
+            DrawableProperty drawable = null;
+
+            // if we are multiediting, cache the current drawable inside the dictionary
+            // if not, just add to the global list
+            if (_multipleEdit)
+            {
+                if (!drawables.TryGetValue(currentObject.GetType(), out drawable))
+                    drawables[currentObject.GetType()] = drawable = new DrawableProperty();
+
+                drawable.UnityObjects.Add(currentObject);
+            }
+            else
+            {
+                drawable = new DrawableProperty();
+                drawable.UnityObjects.Add(currentObject);
+                drawable.Object = new SerializedObject(currentObject);
+                _drawable.Add(drawable);
+            }
+
+            // Go through all components if it's a game object
+            var currentGameObject = currentObject as GameObject;
+            if (currentGameObject != null)
+            {
+                var components = currentGameObject.GetComponents<Component>();
+
+                for (int j = 0; j < components.Length; j++)
+                {
+                    // Create the child drawable
+                    DrawableProperty childDrawable = null;
+                    var currentChildObject = components[j];
+
+                    // If it's multi editing, cache the drawable inside the dictionary
+                    // if it's not multi editing, add to the child list
+                    if (_multipleEdit)
+                    {
+                        if (!drawables.TryGetValue(currentChildObject.GetType(), out childDrawable))
+                            drawables[currentChildObject.GetType()] = childDrawable = new DrawableProperty();
+
+                        childDrawable.UnityObjects.Add(currentChildObject);
+                    }
+                    else
+                    {
+                        childDrawable = new DrawableProperty();
+                        childDrawable.UnityObjects.Add(currentChildObject);
+                        childDrawable.Object = new SerializedObject(currentChildObject);
+                        drawable.Childs.Add(childDrawable);
+                    }
+                }
+            }   
+        }
+
+        if (_multipleEdit)
+        {
+            // Go through the list of drawables
+            // this list is bassicaly the same list that FilterSingles would return but with multiple objects inside SerializedObjects
+            foreach (var drawableProperty in drawables)
+            {
+                // Recontruct the drawable property with all objects that share the same type and have a property to show
+                DrawableProperty currentDrawableProperty = new DrawableProperty()
+                {
+                    Object = new SerializedObject(drawableProperty.Value.UnityObjects.ToArray()),
+                    UnityObjects = drawableProperty.Value.UnityObjects,
+                    Type = drawableProperty.Key,
+                };
+
+                _drawable.Add(currentDrawableProperty);
+            }
+        }
+
+        CreateEditorForAll();
+
+        _searching = false;
     }
 
     /// <summary>
@@ -854,11 +987,9 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         var childSerializedObject = new SerializedObject(uObject);
         var childIterator = childSerializedObject.GetIterator();
 
-        var drawableChild = new DrawableProperty()
-        {
-            UnityObject = uObject,
-            Object = childSerializedObject,
-        };
+        var drawableChild = new DrawableProperty();
+        drawableChild.UnityObjects.Add(uObject);
+        drawableChild.Object = childSerializedObject;
 
         if (filter)
             FilterProperties(father, drawableChild, childSerializedObject, childIterator, search, isPath);
@@ -972,14 +1103,30 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
     bool ValidateIfCanApply(DrawableProperty property)
     {
         property.HasAppliableChanges = false;
-        for (int i = 0; i < property.Properties.Count; i++)
-        {
-            var currentProperty = property.Properties[i];
 
-            if (currentProperty.isInstantiatedPrefab && currentProperty.prefabOverride)
+        if (_shouldUseCustomEditors)
+        {
+            var iterator = property.Object.GetIterator();
+            while (iterator.Next(true))
             {
-                property.HasAppliableChanges = true;
-                break;
+                if (iterator.isInstantiatedPrefab && iterator.prefabOverride)
+                {
+                    property.HasAppliableChanges = true;
+                    break;
+                }
+            }
+        }
+        else
+        {
+            for (int i = 0; i < property.Properties.Count; i++)
+            {
+                var currentProperty = property.Properties[i];
+
+                if (currentProperty.isInstantiatedPrefab && currentProperty.prefabOverride)
+                {
+                    property.HasAppliableChanges = true;
+                    break;
+                }
             }
         }
 
@@ -1003,10 +1150,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         List<Object> objects = new List<Object>();
 
         objects.AddRange(property.UnityObjects);
-
-        if (property.UnityObject != null)
-            objects.Add(property.UnityObject);
-
+        
         for (int i = 0; i < objects.Count; i++)
         {
             var instance = objects[i] as GameObject;
@@ -1059,10 +1203,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         List<Object> objects = new List<Object>();
 
         objects.AddRange(property.UnityObjects);
-
-        if (property.UnityObject != null)
-            objects.Add(property.UnityObject);
-
+        
         for (int i = 0; i < objects.Count; i++)
         {
             var instance = objects[i] as GameObject;
@@ -1201,11 +1342,6 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         {
             UpdateProperties(drawable.Childs[i]);
         }
-
-        if (_expandAll)
-            EditorPrefs.SetBool(drawable.GetHashCode().ToString(), true);
-        else if (_collapseAll)
-            EditorPrefs.SetBool(drawable.GetHashCode().ToString(), false);
     }
 
     /// <summary>
@@ -1233,6 +1369,30 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Create editor for all drawbales
+    /// </summary>
+    private void CreateEditorForAll()
+    {
+        for (int i = 0; i < _drawable.Count; i++)
+        {
+            CreateEditorForProperty(_drawable[i]);
+        }
+    }
+
+    /// <summary>
+    /// Create a editor for just one drawable and its children
+    /// </summary>
+    /// <param name="property"></param>
+    private void CreateEditorForProperty(DrawableProperty property)
+    {
+        property.CustomEditor = Editor.CreateEditor(property.UnityObjects.ToArray());
+        for (int i = 0; i < property.Childs.Count; i++)
+        {
+            CreateEditorForProperty(property.Childs[i]);
+        }
     }
 
     #endregion
@@ -1363,6 +1523,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
             _lockedObjects = Selection.objects;
             FilterSelected();
         });
+        menu.AddItem(new GUIContent("New property Inspector"), false, InitWindow);
     }
 
     private void ExpandAll()
@@ -1385,7 +1546,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
     private void SetEditorPrefsForObject(DrawableProperty property, bool value)
     {
-        EditorPrefs.SetBool(property.GetHashCode().ToString(), value);
+        EditorPrefs.SetBool((property.GetHashCode() + _instanceId).ToString(), value);
         for (int i = 0; i < property.Childs.Count; i++)
         {
             SetEditorPrefsForObject(property.Childs[i], value);
