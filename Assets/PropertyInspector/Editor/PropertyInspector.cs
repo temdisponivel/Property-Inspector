@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEditor;
 using Object = UnityEngine.Object;
+using Random = System.Random;
 
 [ExecuteInEditMode]
 public class PropertyInspector : EditorWindow, IHasCustomMenu
@@ -67,7 +68,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
                 for (int i = 0; i < Object.targetObjects.Length; i++)
                 {
                     var currentObject = Object.targetObjects[i];
-                    hashCode += currentObject.GetInstanceID();
+                    hashCode &= currentObject.GetInstanceID();
                 }
             }
             return hashCode;
@@ -322,8 +323,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
     static void SetupInfo(PropertyInspector window)
     {
         window.titleContent = _tabTitleGUIContent;
-        _instances++;
-        window._instanceId = _instances;
+        window._instanceId = ++_instances + new Random().Next();
         window._focus = true;
         window.wantsMouseMove = true;
         window.autoRepaintOnSceneChange = true;
@@ -657,7 +657,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
             revertCallback = () => RevertChangesToPrefab(property);
         }
 
-        return (DrawHeader(name, (property.GetHashCode() + _instanceId).ToString(), buttonCallback, applyCallback, revertCallback, openScriptCallback));
+        return (DrawHeader(name, (property.GetHashCode() & _instanceId).ToString(), buttonCallback, applyCallback, revertCallback, openScriptCallback));
     }
 
     private void DrawObject(DrawableProperty property)
@@ -1551,7 +1551,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
     private void SetEditorPrefsForObject(DrawableProperty property, bool value)
     {
-        EditorPrefs.SetBool((property.GetHashCode() + _instanceId).ToString(), value);
+        EditorPrefs.SetBool((property.GetHashCode() & _instanceId).ToString(), value);
         for (int i = 0; i < property.Childs.Count; i++)
         {
             SetEditorPrefsForObject(property.Childs[i], value);
