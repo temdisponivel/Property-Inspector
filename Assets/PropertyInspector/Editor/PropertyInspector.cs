@@ -129,7 +129,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
     private bool _shouldUseCustomEditors
     {
-        get { return _inspectorMode && string.IsNullOrEmpty(_currentSearchedQuery) && _useCustomInspectors; }
+        get { return _inspectorMode && string.IsNullOrEmpty(_currentSearchedQuery); }
     }
 
     private SearchPattern SearchPatternToUse
@@ -450,28 +450,11 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
     #endregion
 
     #region Unity event
-
+    
     void Update()
     {
         if (_searching)
             return;
-
-        if (_openedAsUtility)
-        {
-            if (Event.current != null)
-            {
-                if (Event.current.type == EventType.keyDown && Event.current.keyCode == KeyCode.Escape)
-                {
-                    Close();
-                    return;
-                }
-
-                if (Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.F && Event.current.modifiers == EventModifiers.Control)
-                {
-                    Focus();
-                }
-            }
-        }
 
         if (_lastSearchedQuery != _currentSearchedQuery)
         {
@@ -554,6 +537,14 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
             ValidaIfCanApplyAll();
         }
 
+        if (Event.current.type == EventType.KeyUp)
+        {
+            if (Event.current.keyCode == KeyCode.F && Event.current.control)
+            {
+                _focus = true;
+            }
+        }
+
         // Update serializable objects with the actual object information
         UpdateAllProperties();
 
@@ -568,7 +559,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
         EditorGUILayout.BeginVertical();
         _scrollPosition = EditorGUILayout.BeginScrollView(_scrollPosition, GUILayout.Width(position.width), GUILayout.Height(position.height - 100));
-        
+
         if (_expandAll)
             ExpandAll();
         else if (_collapseAll)
@@ -618,7 +609,12 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
                 {
                     // this should not happen, but some reason it does
                     if (current.CustomEditor != null)
-                        current.CustomEditor.OnInspectorGUI();
+                    {
+                        if (_useCustomInspectors)
+                            current.CustomEditor.OnInspectorGUI();
+                        else
+                            current.CustomEditor.DrawDefaultInspector();
+                    }
                 }
                 else
                 {
@@ -650,7 +646,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
                         name = string.Format(_multiEditHeaderFormat, typeName, current.Object.targetObjects.Length);
                         if (!_multipleEdit)
                             name = currentChild.UnityObjects[0].GetType().Name;
-                        
+
                         buttonCallback = GetObjectToHight(currentChild);
                         applyCallback = null;
                         revertCallback = null;
@@ -675,7 +671,12 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
                             {
                                 // this should not happen, but some reason it does
                                 if (currentChild.CustomEditor != null)
-                                    currentChild.CustomEditor.OnInspectorGUI();
+                                {
+                                    if (_useCustomInspectors)
+                                        currentChild.CustomEditor.OnInspectorGUI();
+                                    else
+                                        currentChild.CustomEditor.DrawDefaultInspector();
+                                }
                             }
                             else
                             {
@@ -753,7 +754,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         for (int i = objects.Length - 1; i >= 0; i--)
         {
             var currentObject = objects[i];
-            
+
             DrawableProperty drawable = null;
 
             // if we are multiediting, cache the current drawable inside the dictionary
@@ -802,7 +803,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
                         drawable.Childs.Add(childDrawable);
                     }
                 }
-            }   
+            }
         }
 
         if (_multipleEdit)
@@ -1150,7 +1151,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         List<Object> objects = new List<Object>();
 
         objects.AddRange(property.UnityObjects);
-        
+
         for (int i = 0; i < objects.Count; i++)
         {
             var instance = objects[i] as GameObject;
@@ -1203,7 +1204,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         List<Object> objects = new List<Object>();
 
         objects.AddRange(property.UnityObjects);
-        
+
         for (int i = 0; i < objects.Count; i++)
         {
             var instance = objects[i] as GameObject;
