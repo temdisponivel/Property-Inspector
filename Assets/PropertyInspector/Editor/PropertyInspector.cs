@@ -178,6 +178,20 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         }
     }
 
+    private static GUIContent _openScriptContentCache;
+    private static GUIContent _openScriptContent
+    {
+        get
+        {
+            if (_openScriptContentCache == null)
+            {
+                var textToLoad = "icons/UnityEditor.ConsoleWindow.png";
+                _openScriptContentCache = new GUIContent(EditorGUIUtility.Load(textToLoad) as Texture2D, "Edit script");
+            }
+            return _openScriptContentCache;
+        }
+    }
+
     private static GUIContent _titleGUIContentCache;
     private static GUIContent _titleGUIContent
     {
@@ -633,6 +647,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         // If we pass the callback as something not null
         // a button for the callback will be displayed in the header
         var buttonCallback = GetObjectToHight(property);
+        var openScriptCallback = GetOpenScriptCallback(property);
         Action applyCallback = null;
         Action revertCallback = null;
 
@@ -642,7 +657,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
             revertCallback = () => RevertChangesToPrefab(property);
         }
 
-        return (DrawHeader(name, (property.GetHashCode() + _instanceId).ToString(), buttonCallback, applyCallback, revertCallback));
+        return (DrawHeader(name, (property.GetHashCode() + _instanceId).ToString(), buttonCallback, applyCallback, revertCallback, openScriptCallback));
     }
 
     private void DrawObject(DrawableProperty property)
@@ -1275,6 +1290,18 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
     }
 
     /// <summary>
+    /// Get the callback for openning a script
+    /// </summary>
+    private Action GetOpenScriptCallback(DrawableProperty property)
+    {
+        var scriptRef = property.Object.FindProperty("m_Script");
+        if (scriptRef == null)
+            return null;
+
+        return () => AssetDatabase.OpenAsset(scriptRef.objectReferenceValue);
+    }
+
+    /// <summary>
     /// Update the state of all serializedObjects
     /// If any of them has been destroyed, refresh selection and filter
     /// </summary>
@@ -1411,7 +1438,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
     /// If any of these buttons callback are null, the correspondent button will be disabled
     /// This function is also based on NGUI's DrawHeader.
     /// </summary>
-    static public bool DrawHeader(string text, string key, Action onButtonClick = null, Action onApplyCallback = null, Action onRevertCallback = null)
+    static public bool DrawHeader(string text, string key, Action onButtonClick = null, Action onApplyCallback = null, Action onRevertCallback = null, Action openScriptAction = null)
     {
         var state = EditorPrefs.GetBool(key, true);
 
@@ -1448,6 +1475,21 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
                 onRevertCallback();
         }
         GUI.enabled = true;
+
+        GUILayout.Space(2);
+
+        if (openScriptAction == null)
+        {
+            GUI.enabled = false;
+        }
+        if (!GUILayout.Toggle(true, _openScriptContent, "dragtab", GUILayout.Width(35)))
+        {
+            if (openScriptAction != null)
+                openScriptAction();
+        }
+        GUI.enabled = true;
+
+        GUILayout.Space(2);
 
         var toolTip = "Highlight object";
         if (onButtonClick == null)
