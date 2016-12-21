@@ -32,15 +32,12 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         {
             UnityObjects = new List<Object>();
             Childs = new List<DrawableProperty>();
-            Properties = new List<SerializedProperty>();
             PropertiesPaths = new HashSet<string>();
         }
 
-        //public Object UnityObject { get; set; }
         public List<Object> UnityObjects { get; set; }
         public Type Type { get; set; }
         public SerializedObject Object { get; set; }
-        public List<SerializedProperty> Properties { get; set; }
         public HashSet<string> PropertiesPaths { get; set; }
         public List<DrawableProperty> Childs { get; set; }
         public bool HasAppliableChanges { get; set; }
@@ -465,8 +462,6 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
                 _timeToSearchAgain = EditorApplication.timeSinceStartup + .3f;
             }
         }
-
-        //Repaint();
     }
 
     void OnSelectionChange()
@@ -679,9 +674,9 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         }
         else
         {
-            foreach (var serializedProperty in property.Properties)
+            foreach (var serializedProperty in property.PropertiesPaths)
             {
-                EditorGUILayout.PropertyField(serializedProperty, true);
+                EditorGUILayout.PropertyField(serializedObjectChild.FindProperty(serializedProperty), true);
             }
         }
 
@@ -934,7 +929,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
             foreach (var propertiesPath in currentDrawableProperty.PropertiesPaths)
             {
-                currentDrawableProperty.Properties.Add(currentDrawableProperty.Object.FindProperty(propertiesPath));
+                currentDrawableProperty.PropertiesPaths.Add(propertiesPath);
             }
 
             _drawable.Add(currentDrawableProperty);
@@ -984,13 +979,12 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
             SerializedProperty property;
             if (Compare(iterator, search, isPath))
             {
-                property = iterator.Copy();//serializedObject.FindProperty(iterator.propertyPath);
+                property = serializedObject.FindProperty(iterator.propertyPath);
                 if (property == null)
                     continue;
 
                 // add the property to the drawable property
                 add = true;
-                child.Properties.Add(property);
                 child.PropertiesPaths.Add(property.propertyPath);
             }
 
@@ -1004,7 +998,6 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
                 if (child.PropertiesPaths.Contains(property.propertyPath))
                     continue;
 
-                child.Properties.Add(property);
                 child.PropertiesPaths.Add(property.propertyPath);
                 add = true;
             }
@@ -1084,9 +1077,9 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         }
         else
         {
-            for (int i = 0; i < property.Properties.Count; i++)
+            foreach (var propertiesPath in property.PropertiesPaths)
             {
-                var currentProperty = property.Properties[i];
+                var currentProperty = property.Object.FindProperty(propertiesPath);
 
                 if (currentProperty.isInstantiatedPrefab && currentProperty.prefabOverride)
                 {
