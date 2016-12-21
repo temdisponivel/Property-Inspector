@@ -316,7 +316,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         window._focus = true;
         window.wantsMouseMove = true;
         window.autoRepaintOnSceneChange = true;
-        window.minSize = new Vector2(400, window.minSize.y);
+        //window.minSize = new Vector2(400, window.minSize.y);
 
         window._inspectorMode = EditorPrefs.GetBool(InspectorModeKey + window._openedAsUtility, false);
         window._multipleEdit = EditorPrefs.GetBool(MultipleEditKey + window._openedAsUtility, false);
@@ -450,7 +450,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
     #endregion
 
     #region Unity event
-    
+
     void Update()
     {
         if (_searching)
@@ -520,30 +520,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
     private void OnGUI()
     {
-        // We can only change our objects inside layout event
-        if (Event.current.type == EventType.Layout)
-        {
-            if (_applyAll)
-            {
-                ApplyAll();
-                _applyAll = false;
-            }
-            else if (_revertAll)
-            {
-                RevertAll();
-                _revertAll = false;
-            }
-
-            ValidaIfCanApplyAll();
-        }
-
-        if (Event.current.type == EventType.KeyUp)
-        {
-            if (Event.current.keyCode == KeyCode.F && Event.current.control)
-            {
-                _focus = true;
-            }
-        }
+        ApplyRevertAllAndFocus();
 
         // Update serializable objects with the actual object information
         UpdateAllProperties();
@@ -571,140 +548,31 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         {
             var current = _drawable[i];
 
-            var typeName = string.Empty;
-            if (current.Type != null)
-                typeName = current.Type.Name;
-
-            // if it's editing multiple objects, change name
-            var name = string.Format(_multiEditHeaderFormat, typeName, current.Object.targetObjects.Length);
-            if (!_multipleEdit)
-                name = current.UnityObjects[0].name;
-
-            // get callbacks for tab buttons
-            // this are the callbacks called when user clicks in "Apply", "Revert" or "Highlight" on object header
-            Action buttonCallback = GetObjectToHight(current);
-            Action applyCallback = null;
-            Action revertCallback = null;
-
-            // If there's changes to be applied to prefabs, enable buttons of apply and revert
-            if (current.HasAppliableChanges)
-            {
-                applyCallback = () => ApplyChangesToPrefab(current);
-                revertCallback = () => RevertChangesToPrefab(current);
-            }
-
-            // Draw a header if the object name and pass the callback
-            // If one of these callbacks is null, the header will disable the button that would trigger it
-            if (DrawHeader(name, (current.GetHashCode() + _instanceId).ToString(), buttonCallback, applyCallback, revertCallback))
+            if (DrawObjectHeader(current, false))
             {
                 BeginContents();
-
-                EditorGUI.BeginChangeCheck();
-
-                var serializedObject = current.Object;
-
-                // if we should use custom inspectors, use it
-                // otherwise, draw every property one by one
-                if (_shouldUseCustomEditors)
                 {
-                    // this should not happen, but some reason it does
-                    if (current.CustomEditor != null)
-                    {
-                        if (_useCustomInspectors)
-                            current.CustomEditor.OnInspectorGUI();
-                        else
-                            current.CustomEditor.DrawDefaultInspector();
-                    }
-                }
-                else
-                {
-                    // draw the actual property into the screen
-                    foreach (var serializedProperty in current.Properties)
-                    {
-                        EditorGUILayout.PropertyField(serializedProperty, true);
-                    }
-                }
+                    DrawObject(current);
 
-                // if the player has altered the object between BeginChangeCheck and this point,
-                // the below call will return true and we should apply those changes
-                if (EditorGUI.EndChangeCheck())
-                    serializedObject.ApplyModifiedProperties();
-
-                // if these object has childs (components are child of game objects in single mode (not multi-edit mode))
-                if (current.Childs.Count > 0)
-                {
                     // do basically the same we just did but for every child of this object
                     for (int j = 0; j < current.Childs.Count; j++)
                     {
                         var currentChild = current.Childs[j];
 
-                        typeName = string.Empty;
-                        if (currentChild.Type != null)
-                            typeName = currentChild.Type.Name;
-
-                        // if it's editing multiple objects, change name
-                        name = string.Format(_multiEditHeaderFormat, typeName, current.Object.targetObjects.Length);
-                        if (!_multipleEdit)
-                            name = currentChild.UnityObjects[0].GetType().Name;
-
-                        buttonCallback = GetObjectToHight(currentChild);
-                        applyCallback = null;
-                        revertCallback = null;
-
-                        if (currentChild.HasAppliableChanges)
-                        {
-                            applyCallback = () => ApplyChangesToPrefab(currentChild);
-                            revertCallback = () => RevertChangesToPrefab(currentChild);
-                        }
-
-                        if (DrawHeader(name, (currentChild.GetHashCode() + _instanceId).ToString(), buttonCallback, applyCallback, revertCallback))
+                        if (DrawObjectHeader(currentChild, true))
                         {
                             BeginContents();
 
-                            EditorGUI.BeginChangeCheck();
-
-                            var serializedObjectChild = currentChild.Object;
-
-                            // if we should use custom inspectors, use it
-                            // otherwise, draw every property one by one
-                            if (_shouldUseCustomEditors)
-                            {
-                                // this should not happen, but some reason it does
-                                if (currentChild.CustomEditor != null)
-                                {
-                                    if (_useCustomInspectors)
-                                        currentChild.CustomEditor.OnInspectorGUI();
-                                    else
-                                        currentChild.CustomEditor.DrawDefaultInspector();
-                                }
-                            }
-                            else
-                            {
-                                foreach (var serializedProperty in currentChild.Properties)
-                                {
-                                    EditorGUILayout.PropertyField(serializedProperty, true);
-                                }
-                            }
-
-                            if (EditorGUI.EndChangeCheck())
-                                serializedObjectChild.ApplyModifiedProperties();
+                            DrawObject(currentChild);
 
                             EndContents();
 
-                            // update the last rect drawn
-                            // this is used to validated if we are drawing outside of screen
-                            UpdateLastRectDraw();
-
-                            // if we are drawing outside of screen, stop drawing - because there's no point in that
                             if (ShouldSkipDrawing())
                                 break;
                         }
                     }
                 }
-
                 EndContents();
-
-                UpdateLastRectDraw();
 
                 if (ShouldSkipDrawing())
                     break;
@@ -713,6 +581,112 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
         EditorGUILayout.EndScrollView();
         EditorGUILayout.EndVertical();
+    }
+
+    /// <summary>
+    /// Helper function that calls apply or revert
+    /// Or focus the cursor on the search
+    /// If needed. 
+    /// </summary>
+    private void ApplyRevertAllAndFocus()
+    {
+        // We can only change our objects inside layout event
+        if (Event.current.type == EventType.Layout)
+        {
+            if (_applyAll)
+            {
+                ApplyAll();
+                _applyAll = false;
+            }
+            else if (_revertAll)
+            {
+                RevertAll();
+                _revertAll = false;
+            }
+
+            ValidaIfCanApplyAll();
+        }
+
+        if (Event.current.type == EventType.KeyUp)
+        {
+            if (Event.current.keyCode == KeyCode.F && Event.current.control)
+            {
+                _focus = true;
+            }
+        }
+    }
+
+    private bool DrawObjectHeader(DrawableProperty property, bool useTypeAsName)
+    {
+        var typeName = string.Empty;
+        if (property.Type != null)
+            typeName = property.Type.Name;
+        else
+            typeName = property.UnityObjects[0].GetType().Name;
+
+        // if it's editing multiple objects, change name
+        name = string.Format(_multiEditHeaderFormat, typeName, property.Object.targetObjects.Length);
+        if (!_multipleEdit)
+        {
+            if (useTypeAsName)
+                name = property.UnityObjects[0].GetType().Name;
+            else
+                name = property.UnityObjects[0].name;
+        }
+
+        // Create the callback for the object header
+        // If we pass the callback as something not null
+        // a button for the callback will be displayed in the header
+        var buttonCallback = GetObjectToHight(property);
+        Action applyCallback = null;
+        Action revertCallback = null;
+
+        if (property.HasAppliableChanges)
+        {
+            applyCallback = () => ApplyChangesToPrefab(property);
+            revertCallback = () => RevertChangesToPrefab(property);
+        }
+
+        return (DrawHeader(name, (property.GetHashCode() + _instanceId).ToString(), buttonCallback, applyCallback, revertCallback));
+    }
+
+    private void DrawObject(DrawableProperty property)
+    {
+        var serializedObjectChild = property.Object;
+
+        EditorGUI.BeginChangeCheck();
+
+        // if we should use custom inspectors, use it
+        // otherwise, draw every property one by one
+        if (_shouldUseCustomEditors)
+        {
+            // Custom inspector will be draw oddly without this two line below
+            // Labels will be very wide and fields will be right align
+            // With this lines it looks nicer
+
+            var previousWidth = EditorGUIUtility.labelWidth;
+            EditorGUIUtility.labelWidth = position.width / 2;
+
+            // this should not happen, but some reason it does
+            if (property.CustomEditor != null)
+            {
+                if (_useCustomInspectors)
+                    property.CustomEditor.OnInspectorGUI();
+                else
+                    property.CustomEditor.DrawDefaultInspector();
+            }
+            EditorGUIUtility.labelWidth = previousWidth;
+        }
+        else
+        {
+            foreach (var serializedProperty in property.Properties)
+            {
+                EditorGUILayout.PropertyField(serializedProperty, true);
+            }
+        }
+
+        if (EditorGUI.EndChangeCheck())
+            serializedObjectChild.ApplyModifiedProperties();
     }
 
     #endregion
@@ -808,20 +782,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
         if (_multipleEdit)
         {
-            // Go through the list of drawables
-            // this list is bassicaly the same list that FilterSingles would return but with multiple objects inside SerializedObjects
-            foreach (var drawableProperty in drawables)
-            {
-                // Recontruct the drawable property with all objects that share the same type and have a property to show
-                DrawableProperty currentDrawableProperty = new DrawableProperty()
-                {
-                    Object = new SerializedObject(drawableProperty.Value.UnityObjects.ToArray()),
-                    UnityObjects = drawableProperty.Value.UnityObjects,
-                    Type = drawableProperty.Key,
-                };
-
-                _drawable.Add(currentDrawableProperty);
-            }
+            PopuplateDrawablesFromDictionary(drawables);
         }
 
         CreateEditorForAll();
@@ -949,7 +910,15 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
             }
         }
 
+        PopuplateDrawablesFromDictionary(drawables);
 
+        _searching = false;
+
+        EditorUtility.ClearProgressBar();
+    }
+
+    private void PopuplateDrawablesFromDictionary(Dictionary<Type, DrawableProperty> drawables)
+    {
         // Go through the list of drawables
         // this list is bassicaly the same list that FilterSingles would return but with multiple objects inside SerializedObjects
         foreach (var drawableProperty in drawables)
@@ -970,10 +939,6 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
             _drawable.Add(currentDrawableProperty);
         }
-
-        _searching = false;
-
-        EditorUtility.ClearProgressBar();
     }
 
     #endregion
@@ -1362,6 +1327,10 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
     /// <returns></returns>
     private bool ShouldSkipDrawing()
     {
+        // update the last rect drawn
+        // this is used to validated if we are drawing outside of screen
+        UpdateLastRectDraw();
+
         if (Event.current.type == EventType.repaint)
         {
             var pos = position;
