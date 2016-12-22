@@ -399,7 +399,13 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
         GUI.SetNextControlName(SearchFieldName);
 
-        _currentSearchedQuery = EditorGUILayout.TextField(_currentSearchedQuery, (GUIStyle)"ToolbarSeachTextField", GUILayout.Width(position.width - 25));
+        var search = EditorGUILayout.TextField(_currentSearchedQuery, (GUIStyle)"ToolbarSeachTextField", GUILayout.Width(position.width - 25));
+
+        if (search != _currentSearchedQuery)
+        {
+            _timeToSearchAgain = EditorApplication.timeSinceStartup + .2f;
+            _currentSearchedQuery = search;
+        }
 
         var style = "ToolbarSeachCancelButtonEmpty";
         if (!string.IsNullOrEmpty(_currentSearchedQuery))
@@ -487,7 +493,6 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
             {
                 FilterSelected();
                 _lastSearchedQuery = _currentSearchedQuery;
-                _timeToSearchAgain = EditorApplication.timeSinceStartup + .3f;
             }
         }
     }
@@ -911,15 +916,20 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
             var drawable = FilterObject(null, currentObject, searchAsLow, isPath, false);
 
+            bool ignorePaths = false;
             if (!string.IsNullOrEmpty(_currentSearchedQuery) || _inspectorMode)
             {
                 FilterProperties(null, drawable, serializedObject, iterator, searchAsLow, isPath);
+            }
+            else
+            {
+                ignorePaths = true;
             }
 
             // Add all objects and properties to the list of drawables 
             // this list is used to cache all properties and objects that will be drawn
             // we will go through this list later and contruct our actual drawable properties
-            AddObjectsAndProperties(drawables, drawable, currentObject, true);
+            AddObjectsAndProperties(drawables, drawable, currentObject, ignorePaths);
 
             if (string.IsNullOrEmpty(_currentSearchedQuery) && !_inspectorMode)
                 continue;
