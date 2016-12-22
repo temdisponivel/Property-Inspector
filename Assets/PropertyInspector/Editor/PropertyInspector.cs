@@ -36,6 +36,20 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
             PropertiesPaths = new HashSet<string>();
         }
 
+        public int Id
+        {
+            get
+            {
+                int id = 0;
+                for (int i = 0; i < UnityObjects.Count; i++)
+                {
+                    var obj = UnityObjects[i];
+                    id |= obj.GetInstanceID();
+                }
+                return id;
+            }
+        }
+
         public List<Object> UnityObjects { get; set; }
         public Type Type { get; set; }
         public SerializedObject Object { get; set; }
@@ -57,35 +71,32 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
             return !Object.targetObject;
         }
 
-        public override int GetHashCode()
+        public void SetEditorPrefs(bool value, int windowId)
         {
-            // return a unique (or almost anyway) integer based on the Unity Objects that we are editing
-            int hashCode = base.GetHashCode();
-            if (!Object.isEditingMultipleObjects)
-                return Object.targetObject.GetInstanceID();
-            else
+            EditorPrefs.SetBool((Id | windowId).ToString(), value);
+            SetChildEditorPrefs(value, windowId);
+        }
+
+        public void SetChildEditorPrefs(bool value, int windowId)
+        {
+            for (int i = 0; i < Childs.Count; i++)
             {
-                for (int i = 0; i < Object.targetObjects.Length; i++)
-                {
-                    var currentObject = Object.targetObjects[i];
-                    hashCode &= currentObject.GetInstanceID();
-                }
+                Childs[i].SetEditorPrefs(value, windowId);
             }
-            return hashCode;
         }
     }
 
     #endregion
 
-    private static int _instances;
-
+    private static int _instanceIds;
     private readonly List<DrawableProperty> _drawable = new List<DrawableProperty>();
 
-    private const string SearchFieldName = "SearchQuery";
-    private const string InspectorModeKey = "InspectorMode";
-    private const string MultipleEditKey = "MultiEdit";
-    private const string UseCustomInspectorsKey = "UseCustomInspectors";
+    private const string SearchFieldName = "PISearchQuery";
+    private const string InspectorModeKey = "PIInspectorMode";
+    private const string MultipleEditKey = "PIMultiEdit";
+    private const string UseCustomInspectorsKey = "PIUseCustomInspectors";
 
+    private int _id;
     private bool _openedAsUtility { get; set; }
     private Vector2 _scrollPosition = Vector2.zero;
     private Rect _lastDrawPosition;
@@ -103,7 +114,6 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
     private bool _useCustomInspectors;
     private bool _applyAll;
     private bool _revertAll;
-    private int _instanceId;
 
     private const string _multiEditHeaderFormat = "{0} ({1})";
 
@@ -323,7 +333,6 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
     static void SetupInfo(PropertyInspector window)
     {
         window.titleContent = _tabTitleGUIContent;
-        window._instanceId = ++_instances + new Random().Next();
         window._focus = true;
         window.wantsMouseMove = true;
         window.autoRepaintOnSceneChange = true;
@@ -332,6 +341,11 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         window._inspectorMode = EditorPrefs.GetBool(InspectorModeKey + window._openedAsUtility, false);
         window._multipleEdit = EditorPrefs.GetBool(MultipleEditKey + window._openedAsUtility, false);
         window._useCustomInspectors = EditorPrefs.GetBool(UseCustomInspectorsKey + window._openedAsUtility, false);
+
+        if (window._openedAsUtility)
+            window._id = _instanceIds++;
+        else
+            window._id = _instanceIds++;
 
         window.FilterSelected();
     }
@@ -404,7 +418,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         EditorGUILayout.BeginHorizontal();
 
         var edit = EditorGUILayout.ToggleLeft(new GUIContent("Multi-edit", tooltip: "Edit multiple objects as one"), _multipleEdit, GUILayout.MaxWidth(70));
-        var inspectorMode = EditorGUILayout.ToggleLeft(new GUIContent("Inspector mode", tooltip: "Show all properties when search query is empty (slow when viewing numerous objects without query)"), _inspectorMode, GUILayout.MaxWidth(110));
+        var inspectorMode = EditorGUILayout.ToggleLeft(new GUIContent("Inspector mode", tooltip: "Show all properties when search query is empty (slow when viewing numerous objects without query)"), _inspectorMode, GUILayout.MaxWidth(105));
         var customInspector = EditorGUILayout.ToggleLeft(new GUIContent("Custom Inspectors", tooltip: "Show objects and components using its custom (or default) inspectors"), _useCustomInspectors, GUILayout.MaxWidth(125));
 
         GUILayout.FlexibleSpace();
@@ -520,7 +534,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
     void OnDestroy()
     {
-        _instances--;
+        _instanceIds--;
     }
 
     #endregion
@@ -650,6 +664,8 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         var openScriptCallback = GetOpenScriptCallback(property);
         Action applyCallback = null;
         Action revertCallback = null;
+        Action collapseChilds = null;
+        Action expandChilds = null;
 
         if (property.HasAppliableChanges)
         {
@@ -657,7 +673,13 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
             revertCallback = () => RevertChangesToPrefab(property);
         }
 
-        return (DrawHeader(name, (property.GetHashCode() & _instanceId).ToString(), buttonCallback, applyCallback, revertCallback, openScriptCallback));
+        if (property.Childs.Count > 0)
+        {
+            collapseChilds = () => property.SetChildEditorPrefs(false, _id);
+            expandChilds = () => property.SetChildEditorPrefs(true, _id);
+        }
+
+        return (DrawHeader(name, (property.Id | _id).ToString(), buttonCallback, applyCallback, revertCallback, openScriptCallback, collapseChilds, expandChilds));
     }
 
     private void DrawObject(DrawableProperty property)
@@ -889,12 +911,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
             var drawable = FilterObject(null, currentObject, searchAsLow, isPath, false);
 
-            if (string.IsNullOrEmpty(_currentSearchedQuery) && !_inspectorMode)
-            {
-                _drawable.Add(drawable);
-                continue;
-            }
-            else
+            if (!string.IsNullOrEmpty(_currentSearchedQuery) || _inspectorMode)
             {
                 FilterProperties(null, drawable, serializedObject, iterator, searchAsLow, isPath);
             }
@@ -902,7 +919,10 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
             // Add all objects and properties to the list of drawables 
             // this list is used to cache all properties and objects that will be drawn
             // we will go through this list later and contruct our actual drawable properties
-            AddObjectsAndProperties(drawables, drawable, currentObject);
+            AddObjectsAndProperties(drawables, drawable, currentObject, true);
+
+            if (string.IsNullOrEmpty(_currentSearchedQuery) && !_inspectorMode)
+                continue;
 
             if (HandleProgressBar(i / objects.Length))
                 break;
@@ -1028,9 +1048,9 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
     /// If there's such special drawable, just add the new object to it and the properties to show
     /// If not, create one and do the same
     /// </summary>
-    private void AddObjectsAndProperties(Dictionary<Type, DrawableProperty> drawables, DrawableProperty drawable, Object currentObject)
+    private void AddObjectsAndProperties(Dictionary<Type, DrawableProperty> drawables, DrawableProperty drawable, Object currentObject, bool ignorePaths = false)
     {
-        if (drawable.PropertiesPaths.Count == 0 && drawable.Childs.Count == 0)
+        if (!ignorePaths && drawable.PropertiesPaths.Count == 0 && drawable.Childs.Count == 0)
             return;
 
         DrawableProperty drawableType;
@@ -1038,6 +1058,9 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
             drawables[currentObject.GetType()] = (drawableType = new DrawableProperty());
 
         drawableType.UnityObjects.Add(currentObject);
+
+        if (ignorePaths)
+            return;
 
         foreach (var propertiesPath in drawable.PropertiesPaths)
             drawableType.PropertiesPaths.Add(propertiesPath);
@@ -1438,7 +1461,8 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
     /// If any of these buttons callback are null, the correspondent button will be disabled
     /// This function is also based on NGUI's DrawHeader.
     /// </summary>
-    static public bool DrawHeader(string text, string key, Action onButtonClick = null, Action onApplyCallback = null, Action onRevertCallback = null, Action openScriptAction = null)
+    static public bool DrawHeader(string text, string key, Action onButtonClick = null, Action onApplyCallback = null,
+        Action onRevertCallback = null, Action openScriptAction = null, Action collapseChilds = null, Action expandChilds = null)
     {
         var state = EditorPrefs.GetBool(key, true);
 
@@ -1458,6 +1482,8 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         if (!GUILayout.Toggle(true, text, "dragtab", GUILayout.MinWidth(20f), GUILayout.ExpandWidth(true)))
             state = !state;
 
+        #region Applyu/Revert
+
         if (onApplyCallback == null)
             GUI.enabled = false;
         if (!GUILayout.Toggle(true, new GUIContent("Apply", tooltip: GUI.enabled ? "Apply changes to prefab" : "There's no changes to apply"), "dragtab", GUILayout.Width(50)))
@@ -1476,20 +1502,50 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         }
         GUI.enabled = true;
 
+        #endregion
+
+        #region Expand/Collapse
+
+        if (expandChilds == null)
+            GUI.enabled = false;
+        if (!GUILayout.Toggle(true, _expandGUIContent, "dragtab", GUILayout.Width(25)))
+        {
+            if (expandChilds != null)
+                expandChilds();
+        }
+        GUI.enabled = true;
+
+        if (collapseChilds == null)
+            GUI.enabled = false;
+        if (!GUILayout.Toggle(true, _collapseGUIContent, "dragtab", GUILayout.Width(25)))
+        {
+            if (collapseChilds != null)
+                collapseChilds();
+        }
+        GUI.enabled = true;
+
+        #endregion
+
         GUILayout.Space(2);
+
+        #region Edit script
 
         if (openScriptAction == null)
         {
             GUI.enabled = false;
         }
-        if (!GUILayout.Toggle(true, _openScriptContent, "dragtab", GUILayout.Width(35)))
+        if (!GUILayout.Toggle(true, _openScriptContent, "dragtab", GUILayout.Width(25)))
         {
             if (openScriptAction != null)
                 openScriptAction();
         }
         GUI.enabled = true;
 
+        #endregion
+
         GUILayout.Space(2);
+
+        #region Highlight object
 
         var toolTip = "Highlight object";
         if (onButtonClick == null)
@@ -1498,12 +1554,14 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
             toolTip = "Can't highlight multiple objects";
         }
         _highlightGUIContent.tooltip = toolTip;
-        if (!GUILayout.Toggle(true, _highlightGUIContent, "dragtab", GUILayout.Width(35)))
+        if (!GUILayout.Toggle(true, _highlightGUIContent, "dragtab", GUILayout.Width(25)))
         {
             if (onButtonClick != null)
                 onButtonClick();
         }
         GUI.enabled = true;
+
+        #endregion
 
         if (GUI.changed)
             EditorPrefs.SetBool(key, state);
@@ -1535,7 +1593,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
     {
         for (int i = 0; i < _drawable.Count; i++)
         {
-            SetEditorPrefsForObject(_drawable[i], true);
+            _drawable[i].SetEditorPrefs(true, _id);
         }
         _expandAll = false;
     }
@@ -1544,18 +1602,9 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
     {
         for (int i = 0; i < _drawable.Count; i++)
         {
-            SetEditorPrefsForObject(_drawable[i], false);
+            _drawable[i].SetEditorPrefs(false, _id);
         }
         _collapseAll = false;
-    }
-
-    private void SetEditorPrefsForObject(DrawableProperty property, bool value)
-    {
-        EditorPrefs.SetBool((property.GetHashCode() & _instanceId).ToString(), value);
-        for (int i = 0; i < property.Childs.Count; i++)
-        {
-            SetEditorPrefsForObject(property.Childs[i], value);
-        }
     }
 
     #endregion
