@@ -114,6 +114,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
     private bool _applyAll;
     private bool _revertAll;
     private const string _multiEditHeaderFormat = "{0} ({1})";
+    private double _lastTimeClickToHightObject;
     private string _currentSearchedAsLower
     {
         get
@@ -1538,6 +1539,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
         if (historyNode != null)
         {
+
             _selectedObjects.Clear();
             for (int i = 0; i < historyNode.Value.Count; i++)
             {
@@ -1637,7 +1639,20 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         if (comp != null)
             toHighlight = comp.gameObject;
 
-        return () => EditorGUIUtility.PingObject(toHighlight);
+        if (Event.current.control)
+            return () => Selection.objects = new[] { toHighlight };
+        else
+        {
+            return () =>
+            {
+                if (EditorApplication.timeSinceStartup - _lastTimeClickToHightObject < .3f)
+                    Selection.objects = new[] { toHighlight };
+                else
+                    EditorGUIUtility.PingObject(toHighlight);
+
+                _lastTimeClickToHightObject = EditorApplication.timeSinceStartup;
+            };
+        }
     }
 
     /// <summary>
@@ -1786,8 +1801,21 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
             return false;
 
         _selectedObjects.Clear();
-        _selectedObjects.UnionWith(Selection.objects);
-        _currentHistoryNode = _selectionHistory.AddLast(_selectedObjects.Select(o => o.GetInstanceID()).ToList());
+
+        var hasSelection = Selection.objects.Length != 0;
+        var hasCurrentHistory = _currentHistoryNode != null;
+        var currentHistoryHasObject = hasCurrentHistory && _currentHistoryNode.Value.Count != 0;
+
+        // if we have something selected
+        // or we don't have a current history yet
+        // or the current history is NOT empty, update
+        // this validation if done because we don't want to store more than one empy history on the end of your navigation
+        if (hasSelection || !hasCurrentHistory || currentHistoryHasObject)
+        {
+            _selectedObjects.UnionWith(Selection.objects);
+            _currentHistoryNode = _selectionHistory.AddLast(_selectedObjects.Select(o => o.GetInstanceID()).ToList());
+        }
+
         return true;
     }
 
