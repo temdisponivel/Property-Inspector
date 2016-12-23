@@ -1659,13 +1659,10 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
     /// <returns></returns>
     private Action GetObjectToHight(DrawableProperty property)
     {
-        var isMultiple = !(property.UnityObjects == null || property.UnityObjects.Count == 0);
-
-        if (isMultiple && property.UnityObjects.Count > 1)
-            return null;
-
+        var multiple = property.UnityObjects.Count > 1;
+        
         Object toHighlight = null;
-        if (isMultiple)
+        if (multiple)
             toHighlight = property.Object.targetObjects[0];
         else
             toHighlight = property.Object.targetObject;
@@ -1676,16 +1673,29 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
         if (Event.current.control)
         {
-            return () => SelectObject(toHighlight);
+            return () =>
+            {
+                if (multiple)
+                    SelectObject(property.UnityObjects.ToArray());
+                else
+                    SelectObject(toHighlight);
+            };
         }
         else
         {
             return () =>
             {
                 if (EditorApplication.timeSinceStartup - _lastTimeClickToHightObject < .3f)
-                    SelectObject(toHighlight);
+                {
+                    if (multiple)
+                        SelectObject(property.UnityObjects.ToArray());
+                    else
+                        SelectObject(toHighlight);
+                }
                 else
+                {
                     EditorGUIUtility.PingObject(toHighlight);
+                }
 
                 _lastTimeClickToHightObject = EditorApplication.timeSinceStartup;
             };
@@ -1705,6 +1715,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
     /// </summary>
     private void SelectObject(params Object[] objects)
     {
+        Selection.objects = new Object[0];
         Selection.objects = objects;
     }
 
