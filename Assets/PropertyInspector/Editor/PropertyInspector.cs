@@ -457,7 +457,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
         EditorGUILayout.BeginVertical();
         _scrollPosition = EditorGUILayout.BeginScrollView(_scrollPosition, GUILayout.Width(position.width),
-            GUILayout.Height(position.height - 100));
+            GUILayout.Height(position.height - 125));
 
         if (_expandAll)
             ExpandAll();
