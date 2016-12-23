@@ -77,13 +77,23 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
     #endregion
 
-    private readonly List<DrawableProperty> _drawable = new List<DrawableProperty>();
+    #region Properties
+
+    private readonly Version Version = new Version(1, 0, 0, 0);
+
+    #region Editorprefs Keys
 
     private const string SearchFieldName = "PISearchQuery";
     private const string InspectorModeKey = "PIInspectorMode";
     private const string MultipleEditKey = "PIMultiEdit";
     private const string UseCustomInspectorsKey = "PIUseCustomInspectors";
 
+    #endregion
+
+    #region Misc
+
+    private readonly List<DrawableProperty> _drawable = new List<DrawableProperty>();
+    private readonly Dictionary<int, bool> _headersState = new Dictionary<int, bool>();
     private bool _openedAsUtility { get; set; }
     private Vector2 _scrollPosition = Vector2.zero;
     private Rect _lastDrawPosition;
@@ -101,12 +111,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
     private bool _useCustomInspectors;
     private bool _applyAll;
     private bool _revertAll;
-    private readonly Dictionary<int, bool> _headersState = new Dictionary<int, bool>();
-
     private const string _multiEditHeaderFormat = "{0} ({1})";
-
-    private readonly Version Version = new Version(1, 0, 0, 0);
-
     private string _currentSearchedAsLower
     {
         get
@@ -117,17 +122,14 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
             return _currentSearchedQuery.ToLower();
         }
     }
-
     private bool _forcedShow
     {
         get { return _inspectorMode && string.IsNullOrEmpty(_currentSearchedQuery); }
     }
-
     private bool _shouldUseCustomEditors
     {
         get { return _inspectorMode && string.IsNullOrEmpty(_currentSearchedQuery); }
     }
-
     private SearchPattern SearchPatternToUse
     {
         get
@@ -144,7 +146,6 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
                 return SearchPattern.Contains;
         }
     }
-
     private Object[] _lockedObjects;
     public Object[] _objectsToFilter
     {
@@ -159,6 +160,10 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
             return Selection.objects;
         }
     }
+
+    #endregion
+
+    #region GUI Contents
 
     private static GUIContent _highlightGuiContentCache;
     private static GUIContent _highlightGUIContent
@@ -273,26 +278,15 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         }
     }
 
-    /// <summary>
-    /// Update objects that are locked.
-    /// This is necessary because when lock mode is on
-    /// a object can be destroy while we are still holding it,
-    /// so we remove from our list objects that have been destroyed.
-    /// </summary>
-    private void UpdateLockedObject()
-    {
-        if (_lockedObjects == null)
-            _lockedObjects = new Object[0];
+    #endregion
 
-        var objects = _lockedObjects.ToList();
-        for (int i = objects.Count - 1; i >= 0; i--)
-        {
-            if (objects[i] == null || !objects[i])
-                objects.RemoveAt(i);
-        }
+    #region History
 
-        _lockedObjects = objects.ToArray();
-    }
+    private readonly LinkedList<List<int>> _selectionHistory = new LinkedList<List<int>>();
+
+    #endregion
+
+    #endregion
 
     #region Init
 
@@ -364,7 +358,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
                 _lockedObjects = Selection.objects;
                 FilterSelected();
             }
-
+            
             GUILayout.Space(5);
         }
 
@@ -524,6 +518,9 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
     #region GUI
 
+    /// <summary>
+    /// Where we should draw stuff into the screen.
+    /// </summary>
     private void OnGUI()
     {
         ApplyRevertAllAndFocus();
@@ -622,6 +619,9 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         }
     }
 
+    /// <summary>
+    /// Helper method to a draw the header of a object.
+    /// </summary>
     private bool DrawObjectHeader(DrawableProperty property, bool useTypeAsName)
     {
         var typeName = string.Empty;
@@ -665,6 +665,9 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         return (DrawHeader(name, property, buttonCallback, applyCallback, revertCallback, openScriptCallback, collapseChilds, expandChilds));
     }
 
+    /// <summary>
+    /// Method that runs the logic of drawing the object.
+    /// </summary>
     private void DrawObject(DrawableProperty property)
     {
         var serializedObjectChild = property.Object;
@@ -714,6 +717,8 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
     private void FilterSelected()
     {
         _drawable.Clear();
+
+        Debug.Log("SEARCH");
 
         if (_shouldUseCustomEditors)
             FilterForCustomInspector();
@@ -935,6 +940,10 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         EditorUtility.ClearProgressBar();
     }
 
+    /// <summary>
+    /// Populate our drawables list with the content of a dictionary.
+    /// This dictionary are used to group drawables by its types.
+    /// </summary>
     private void PopuplateDrawablesFromDictionary(Dictionary<Type, DrawableProperty> drawables)
     {
         // Go through the list of drawables
@@ -1399,6 +1408,9 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         }
     }
 
+    /// <summary>
+    /// Get the state of a object. The state defines if it's expanded or collapsed.
+    /// </summary>
     private bool GetState(DrawableProperty property, bool defaultValue)
     {
         bool state;
@@ -1407,17 +1419,44 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         return defaultValue;
     }
 
+    /// <summary>
+    /// Set the state of a object. The state defines if it's expanded or collapsed.
+    /// </summary>
     private void SetState(DrawableProperty property, bool value)
     {
         _headersState[property.Id] = value;
     }
 
+    /// <summary>
+    /// Set the state of all children of a object.
+    /// </summary>
     private void SetStateInChild(DrawableProperty property, bool value)
     {
         for (int i = 0; i < property.Childs.Count; i++)
         {
             SetState(property.Childs[i], value);
         }
+    }
+
+    /// <summary>
+    /// Update objects that are locked.
+    /// This is necessary because when lock mode is on
+    /// a object can be destroy while we are still holding it,
+    /// so we remove from our list objects that have been destroyed.
+    /// </summary>
+    private void UpdateLockedObject()
+    {
+        if (_lockedObjects == null)
+            _lockedObjects = new Object[0];
+
+        var objects = _lockedObjects.ToList();
+        for (int i = objects.Count - 1; i >= 0; i--)
+        {
+            if (objects[i] == null || !objects[i])
+                objects.RemoveAt(i);
+        }
+
+        _lockedObjects = objects.ToArray();
     }
 
     #endregion
@@ -1516,6 +1555,8 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
         #endregion
 
+        GUILayout.Space(2);
+
         #region Expand/Collapse
 
         if (expandChilds == null)
@@ -1601,6 +1642,9 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         menu.AddItem(new GUIContent("New property Inspector"), false, InitWindow);
     }
 
+    /// <summary>
+    /// Expand all objects.
+    /// </summary>
     private void ExpandAll()
     {
         for (int i = 0; i < _drawable.Count; i++)
@@ -1611,6 +1655,9 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         _expandAll = false;
     }
 
+    /// <summary>
+    /// Collapse all objects.
+    /// </summary>
     private void CollapseAll()
     {
         for (int i = 0; i < _drawable.Count; i++)
