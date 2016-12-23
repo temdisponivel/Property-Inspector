@@ -36,20 +36,23 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
             PropertiesPaths = new HashSet<string>();
         }
 
+        private int _id = -1;
         public int Id
         {
             get
             {
-                int id = 0;
-                for (int i = 0; i < UnityObjects.Count; i++)
-                {
-                    var obj = UnityObjects[i];
-                    id |= obj.GetInstanceID();
-                }
-                return id;
+                if (_id == -1)
+                    return UnityObjects[0].GetInstanceID();
+                else
+                    return _id;
+            }
+            set
+            {
+                _id = value;
             }
         }
 
+        public DrawableProperty Father { get; set; }
         public List<Object> UnityObjects { get; set; }
         public Type Type { get; set; }
         public SerializedObject Object { get; set; }
@@ -70,25 +73,10 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
             }
             return !Object.targetObject;
         }
-
-        public void SetEditorPrefs(bool value, int windowId)
-        {
-            EditorPrefs.SetBool((Id | windowId).ToString(), value);
-            SetChildEditorPrefs(value, windowId);
-        }
-
-        public void SetChildEditorPrefs(bool value, int windowId)
-        {
-            for (int i = 0; i < Childs.Count; i++)
-            {
-                Childs[i].SetEditorPrefs(value, windowId);
-            }
-        }
     }
 
     #endregion
 
-    private static int _instanceIds;
     private readonly List<DrawableProperty> _drawable = new List<DrawableProperty>();
 
     private const string SearchFieldName = "PISearchQuery";
@@ -96,7 +84,6 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
     private const string MultipleEditKey = "PIMultiEdit";
     private const string UseCustomInspectorsKey = "PIUseCustomInspectors";
 
-    private int _id;
     private bool _openedAsUtility { get; set; }
     private Vector2 _scrollPosition = Vector2.zero;
     private Rect _lastDrawPosition;
@@ -114,6 +101,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
     private bool _useCustomInspectors;
     private bool _applyAll;
     private bool _revertAll;
+    private readonly Dictionary<int, bool> _headersState = new Dictionary<int, bool>();
 
     private const string _multiEditHeaderFormat = "{0} ({1})";
 
@@ -342,11 +330,6 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         window._multipleEdit = EditorPrefs.GetBool(MultipleEditKey + window._openedAsUtility, false);
         window._useCustomInspectors = EditorPrefs.GetBool(UseCustomInspectorsKey + window._openedAsUtility, false);
 
-        if (window._openedAsUtility)
-            window._id = _instanceIds++;
-        else
-            window._id = _instanceIds++;
-
         window.FilterSelected();
     }
 
@@ -537,11 +520,6 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         }
     }
 
-    void OnDestroy()
-    {
-        _instanceIds--;
-    }
-
     #endregion
 
     #region GUI
@@ -680,11 +658,11 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
         if (property.Childs.Count > 0)
         {
-            collapseChilds = () => property.SetChildEditorPrefs(false, _id);
-            expandChilds = () => property.SetChildEditorPrefs(true, _id);
+            collapseChilds = () => SetStateInChild(property, false);
+            expandChilds = () => SetStateInChild(property, true);
         }
 
-        return (DrawHeader(name, (property.Id | _id).ToString(), buttonCallback, applyCallback, revertCallback, openScriptCallback, collapseChilds, expandChilds));
+        return (DrawHeader(name, property, buttonCallback, applyCallback, revertCallback, openScriptCallback, collapseChilds, expandChilds));
     }
 
     private void DrawObject(DrawableProperty property)
@@ -1049,7 +1027,10 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         }
 
         if (add && father != null)
+        {
             father.Childs.Add(child);
+            child.Id = father.Id + 1;
+        }
     }
 
     /// <summary>
@@ -1418,6 +1399,27 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         }
     }
 
+    private bool GetState(DrawableProperty property, bool defaultValue)
+    {
+        bool state;
+        if (_headersState.TryGetValue(property.Id, out state))
+            return state;
+        return defaultValue;
+    }
+
+    private void SetState(DrawableProperty property, bool value)
+    {
+        _headersState[property.Id] = value;
+    }
+
+    private void SetStateInChild(DrawableProperty property, bool value)
+    {
+        for (int i = 0; i < property.Childs.Count; i++)
+        {
+            SetState(property.Childs[i], value);
+        }
+    }
+
     #endregion
 
     #region UI Helpers
@@ -1471,10 +1473,10 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
     /// If any of these buttons callback are null, the correspondent button will be disabled
     /// This function is also based on NGUI's DrawHeader.
     /// </summary>
-    static public bool DrawHeader(string text, string key, Action onButtonClick = null, Action onApplyCallback = null,
+    private bool DrawHeader(string text, DrawableProperty prop, Action onButtonClick = null, Action onApplyCallback = null,
         Action onRevertCallback = null, Action openScriptAction = null, Action collapseChilds = null, Action expandChilds = null)
     {
-        var state = EditorPrefs.GetBool(key, true);
+        var state = GetState(prop, true);
 
         GUILayout.Space(3f);
         if (!state)
@@ -1574,7 +1576,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         #endregion
 
         if (GUI.changed)
-            EditorPrefs.SetBool(key, state);
+            SetState(prop, state);
 
         GUILayout.Space(2f);
         GUILayout.EndHorizontal();
@@ -1603,7 +1605,8 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
     {
         for (int i = 0; i < _drawable.Count; i++)
         {
-            _drawable[i].SetEditorPrefs(true, _id);
+            SetState(_drawable[i], true);
+            SetStateInChild(_drawable[i], true);
         }
         _expandAll = false;
     }
@@ -1612,7 +1615,8 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
     {
         for (int i = 0; i < _drawable.Count; i++)
         {
-            _drawable[i].SetEditorPrefs(false, _id);
+            SetState(_drawable[i], false);
+            SetStateInChild(_drawable[i], false);
         }
         _collapseAll = false;
     }
