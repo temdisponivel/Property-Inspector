@@ -1,9 +1,12 @@
-﻿using System;
+﻿//#define DEBUGGING
+
+using System;
 using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
+using System.Reflection;
 using UnityEditor;
 using Component = UnityEngine.Component;
 using Object = UnityEngine.Object;
@@ -469,7 +472,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         for (int i = 0; i < _drawable.Count; i++)
         {
             var current = _drawable[i];
-            
+
             // Draw this objects and all its children
             if (DrawObjectAndChildren(current, false))
                 break;
@@ -604,22 +607,43 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
             var previousWidth = EditorGUIUtility.labelWidth;
             EditorGUIUtility.labelWidth = position.width / 2;
-
-            // this should not happen, but some reason it does
-            if (property.CustomEditor != null)
+            try
             {
-                if (_useCustomInspectors)
-                    property.CustomEditor.OnInspectorGUI();
-                else
-                    property.CustomEditor.DrawDefaultInspector();
+                // this should not happen, but some reason it does
+                if (property.CustomEditor != null)
+                {
+                    if (_useCustomInspectors)
+                        property.CustomEditor.OnInspectorGUI();
+                    else
+                        property.CustomEditor.DrawDefaultInspector();
+                }
+                EditorGUIUtility.labelWidth = previousWidth;
             }
-            EditorGUIUtility.labelWidth = previousWidth;
+            catch (Exception ex)
+            {
+#if DEBUGGING
+                Debug.LogError(ex, this);
+#endif
+            }
         }
         else
         {
             foreach (var serializedProperty in property.PropertiesPaths)
             {
-                EditorGUILayout.PropertyField(serializedObjectChild.FindProperty(serializedProperty), true);
+                try
+                {
+                    var prop = serializedObjectChild.FindProperty(serializedProperty);
+                    var name = prop.propertyPath;
+                    if (!name.Contains('.'))
+                        name = prop.displayName;
+                    EditorGUILayout.PropertyField(prop, new GUIContent(name, serializedProperty), prop.hasVisibleChildren);
+                }
+                catch (Exception ex)
+                {
+#if DEBUGGING
+                    Debug.LogError(ex, this);
+#endif
+                }
             }
         }
 
@@ -777,7 +801,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
             filter = true;
             EditorPrefs.SetBool(UseCustomInspectorsKey + _openedAsUtility, customInspector);
         }
-        
+
         if (previousSelection)
         {
             PreviousSelection();
@@ -1307,7 +1331,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         // Get the next property on this level (never go deeper inside a property)
         while (iterator.NextVisible(stepInto))
         {
-            stepInto = false;
+            stepInto = true;
 
             // if this drawable already have this property saved
             if (child.PropertiesPaths.Contains(iterator.propertyPath))
@@ -1317,7 +1341,12 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
             SerializedProperty property;
             if (Compare(iterator, search, isPath))
             {
-                property = serializedObject.FindProperty(iterator.propertyPath);
+                string path = iterator.propertyPath;
+                //if (iterator.depth > 1)
+                //{
+                //    path = path.ind
+                //}
+                property = serializedObject.FindProperty(path);
                 if (property == null)
                     continue;
 
@@ -1660,7 +1689,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
     private Action GetObjectToHight(DrawableProperty property)
     {
         var multiple = property.UnityObjects.Count > 1;
-        
+
         Object toHighlight = null;
         if (multiple)
             toHighlight = property.Object.targetObjects[0];
