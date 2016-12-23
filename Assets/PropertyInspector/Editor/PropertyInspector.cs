@@ -2,8 +2,10 @@
 using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
 using UnityEditor;
+using Component = UnityEngine.Component;
 using Object = UnityEngine.Object;
 using Random = System.Random;
 
@@ -146,20 +148,12 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
                 return SearchPattern.Contains;
         }
     }
-    private Object[] _lockedObjects;
-    public Object[] _objectsToFilter
-    {
-        get
-        {
-            if (_locked)
-            {
-                UpdateLockedObject();
-                return _lockedObjects;
-            }
 
-            return Selection.objects;
-        }
-    }
+    #region Objects
+
+    private readonly HashSet<Object> _selectedObjects = new HashSet<Object>();
+
+    #endregion
 
     #endregion
 
@@ -278,11 +272,46 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         }
     }
 
+    private static GUIContent _nextSelectionGUIContentCache;
+    private static GUIContent _nextSelectionGUIContent
+    {
+        get
+        {
+            if (_nextSelectionGUIContentCache == null)
+            {
+                var textToLoad = "icons/Profiler.NextFrame.png";
+                if (EditorGUIUtility.isProSkin)
+                    textToLoad = "icons/d_Profiler.NextFrame.png";
+                _nextSelectionGUIContentCache = new GUIContent(EditorGUIUtility.Load(textToLoad) as Texture2D, tooltip: "Next selection");
+            }
+
+            return _nextSelectionGUIContentCache;
+        }
+    }
+
+    private static GUIContent _previousSelectionGUIContentCache;
+    private static GUIContent _previousSelectionGUIContent
+    {
+        get
+        {
+            if (_previousSelectionGUIContentCache == null)
+            {
+                var textToLoad = "icons/Profiler.PrevFrame.png";
+                if (EditorGUIUtility.isProSkin)
+                    textToLoad = "icons/d_Profiler.PrevFrame.png";
+                _previousSelectionGUIContentCache = new GUIContent(EditorGUIUtility.Load(textToLoad) as Texture2D, tooltip: "Previous selection");
+            }
+
+            return _previousSelectionGUIContentCache;
+        }
+    }
+
     #endregion
 
     #region History
 
     private readonly LinkedList<List<int>> _selectionHistory = new LinkedList<List<int>>();
+    private LinkedListNode<List<int>> _currentHistoryNode;
 
     #endregion
 
@@ -325,134 +354,6 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         window._useCustomInspectors = EditorPrefs.GetBool(UseCustomInspectorsKey + window._openedAsUtility, false);
 
         window.FilterSelected();
-    }
-
-    #endregion
-
-    #region Title
-
-    /// <summary>
-    /// Draw the header with search field, check boxes and so on
-    /// </summary>
-    private void DrawSearchField()
-    {
-        bool filter = false;
-
-        GUI.SetNextControlName(SearchFieldName);
-
-        GUILayout.BeginVertical("In BigTitle");
-        EditorGUILayout.BeginVertical();
-        GUILayout.Space(5);
-        EditorGUILayout.BeginHorizontal();
-
-        EditorGUILayout.LabelField(_titleGUIContent);
-
-        GUILayout.FlexibleSpace();
-
-        if (_openedAsUtility)
-        {
-            var locked = GUILayout.Toggle(_locked, GUIContent.none, "IN LockButton");
-            if (locked != _locked)
-            {
-                _locked = locked;
-                _lockedObjects = Selection.objects;
-                FilterSelected();
-            }
-            
-            GUILayout.Space(5);
-        }
-
-        if (GUILayout.Button(_helpGUIContent, GUIStyle.none))
-        {
-            ShowHelp();
-        }
-
-        EditorGUILayout.EndHorizontal();
-        EditorGUILayout.BeginVertical();
-        GUILayout.Space(5);
-        EditorGUILayout.EndVertical();
-
-        EditorGUILayout.BeginHorizontal();
-
-        GUI.SetNextControlName(SearchFieldName);
-
-        var search = EditorGUILayout.TextField(_currentSearchedQuery, (GUIStyle)"ToolbarSeachTextField", GUILayout.Width(position.width - 25));
-
-        if (search != _currentSearchedQuery)
-        {
-            _timeToSearchAgain = EditorApplication.timeSinceStartup + .2f;
-            _currentSearchedQuery = search;
-        }
-
-        var style = "ToolbarSeachCancelButtonEmpty";
-        if (!string.IsNullOrEmpty(_currentSearchedQuery))
-            style = "ToolbarSeachCancelButton";
-
-        if (GUILayout.Button(GUIContent.none, style))
-        {
-            _currentSearchedQuery = string.Empty;
-            GUIUtility.keyboardControl = 0;
-        }
-
-        EditorGUILayout.EndHorizontal();
-
-        GUILayout.Space(5);
-
-        EditorGUILayout.BeginHorizontal();
-
-        var edit = EditorGUILayout.ToggleLeft(new GUIContent("Multi-edit", tooltip: "Edit multiple objects as one"), _multipleEdit, GUILayout.MaxWidth(70));
-        var inspectorMode = EditorGUILayout.ToggleLeft(new GUIContent("Inspector mode", tooltip: "Show all properties when search query is empty (slow when viewing numerous objects without query)"), _inspectorMode, GUILayout.MaxWidth(105));
-        var customInspector = EditorGUILayout.ToggleLeft(new GUIContent("Custom Inspectors", tooltip: "Show objects and components using its custom (or default) inspectors"), _useCustomInspectors, GUILayout.MaxWidth(125));
-
-        GUILayout.FlexibleSpace();
-
-        var changed = false;
-        for (int i = 0; i < _drawable.Count; i++)
-        {
-            if (_drawable[i].HasAppliableChanges)
-            {
-                changed = true;
-                break;
-            }
-        }
-
-        if (!changed)
-            GUI.enabled = false;
-        _applyAll = GUILayout.Button(new GUIContent("Apply all", tooltip: changed ? "Apply all instance changes to prefabs" : "There's no changes to apply"), (GUIStyle)"miniButtonLeft");
-        _revertAll = GUILayout.Button(new GUIContent("Revert all", tooltip: changed ? "Revert all instance changes to prefabs" : "There's no changes to revert"), (GUIStyle)"miniButtonRight");
-        if (!changed)
-            GUI.enabled = true;
-
-        _expandAll = GUILayout.Button(_expandGUIContent, "miniButtonLeft");
-        _collapseAll = GUILayout.Button(_collapseGUIContent, "miniButtonRight");
-
-        EditorGUILayout.EndHorizontal();
-        GUILayout.Space(5);
-        EditorGUILayout.EndVertical();
-        GUILayout.EndVertical();
-
-        if (edit != _multipleEdit)
-        {
-            filter = true;
-            EditorPrefs.SetBool(MultipleEditKey + _openedAsUtility, edit);
-        }
-        if (inspectorMode != _inspectorMode)
-        {
-            filter = true;
-            EditorPrefs.SetBool(InspectorModeKey + _openedAsUtility, inspectorMode);
-        }
-        if (customInspector != _useCustomInspectors)
-        {
-            filter = true;
-            EditorPrefs.SetBool(UseCustomInspectorsKey + _openedAsUtility, customInspector);
-        }
-
-        _inspectorMode = inspectorMode;
-        _multipleEdit = edit;
-        _useCustomInspectors = customInspector;
-
-        if (filter)
-            FilterSelected();
     }
 
     #endregion
@@ -509,7 +410,6 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         if (locked != _locked)
         {
             _locked = locked;
-            _lockedObjects = Selection.objects;
             FilterSelected();
         }
     }
@@ -709,16 +609,387 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
     #endregion
 
+    #region UI Helpers
+
+    /// <summary>
+    /// Draw the header with search field, check boxes and so on
+    /// </summary>
+    private void DrawSearchField()
+    {
+        bool filter = false;
+
+        #region Top row
+
+        #region Label and help button
+
+        GUILayout.BeginVertical("In BigTitle");
+        EditorGUILayout.BeginVertical();
+        EditorGUILayout.BeginHorizontal();
+
+        var previousSelection = GUILayout.Button(_previousSelectionGUIContent, (GUIStyle)"miniButtonLeft");
+        var nextSelection = GUILayout.Button(_nextSelectionGUIContent, (GUIStyle)"miniButtonRight");
+
+        GUILayout.FlexibleSpace();
+
+        if (_openedAsUtility)
+        {
+            var locked = GUILayout.Toggle(_locked, GUIContent.none, "IN LockButton");
+            if (locked != _locked)
+            {
+                _locked = locked;
+                FilterSelected();
+            }
+
+            GUILayout.Space(5);
+        }
+
+        if (GUILayout.Button(_helpGUIContent, GUIStyle.none))
+        {
+            ShowHelp();
+        }
+
+        EditorGUILayout.EndHorizontal();
+        EditorGUILayout.BeginVertical();
+        GUILayout.Space(10);
+        EditorGUILayout.EndVertical();
+
+        #endregion
+
+        #region Search bar
+
+        EditorGUILayout.BeginVertical();
+
+        EditorGUILayout.LabelField(_titleGUIContent);
+
+        EditorGUILayout.BeginHorizontal();
+
+        GUI.SetNextControlName(SearchFieldName);
+
+        var search = EditorGUILayout.TextField(_currentSearchedQuery, (GUIStyle)"ToolbarSeachTextField", GUILayout.Width(position.width - 25));
+
+        if (search != _currentSearchedQuery)
+        {
+            _timeToSearchAgain = EditorApplication.timeSinceStartup + .2f;
+            _currentSearchedQuery = search;
+        }
+
+        var style = "ToolbarSeachCancelButtonEmpty";
+        if (!string.IsNullOrEmpty(_currentSearchedQuery))
+            style = "ToolbarSeachCancelButton";
+
+        if (GUILayout.Button(GUIContent.none, style))
+        {
+            _currentSearchedQuery = string.Empty;
+            GUIUtility.keyboardControl = 0;
+        }
+
+        EditorGUILayout.EndHorizontal();
+
+        EditorGUILayout.EndVertical();
+
+        GUILayout.Space(5);
+
+        #endregion
+
+        #endregion
+
+        #region Bottom bar
+
+        EditorGUILayout.BeginHorizontal();
+
+        var edit = EditorGUILayout.ToggleLeft(new GUIContent("Multi-edit", tooltip: "Edit multiple objects as one"), _multipleEdit, GUILayout.MaxWidth(70));
+        var inspectorMode = EditorGUILayout.ToggleLeft(new GUIContent("Inspector mode", tooltip: "Show all properties when search query is empty (slow when viewing numerous objects without query)"), _inspectorMode, GUILayout.MaxWidth(105));
+        var customInspector = EditorGUILayout.ToggleLeft(new GUIContent("Custom Inspectors", tooltip: "Show objects and components using its custom (or default) inspectors"), _useCustomInspectors, GUILayout.MaxWidth(125));
+
+        GUILayout.FlexibleSpace();
+
+        var changed = false;
+        for (int i = 0; i < _drawable.Count; i++)
+        {
+            if (_drawable[i].HasAppliableChanges)
+            {
+                changed = true;
+                break;
+            }
+        }
+
+        if (!changed)
+            GUI.enabled = false;
+        _applyAll = GUILayout.Button(new GUIContent("Apply all", tooltip: changed ? "Apply all instance changes to prefabs" : "There's no changes to apply"), (GUIStyle)"miniButtonLeft");
+        _revertAll = GUILayout.Button(new GUIContent("Revert all", tooltip: changed ? "Revert all instance changes to prefabs" : "There's no changes to revert"), (GUIStyle)"miniButtonRight");
+        if (!changed)
+            GUI.enabled = true;
+
+        _expandAll = GUILayout.Button(_expandGUIContent, "miniButtonLeft");
+        _collapseAll = GUILayout.Button(_collapseGUIContent, "miniButtonRight");
+
+        EditorGUILayout.EndHorizontal();
+        GUILayout.Space(5);
+        EditorGUILayout.EndVertical();
+        GUILayout.EndVertical();
+
+        #endregion
+
+        #region Changes
+
+        if (edit != _multipleEdit)
+        {
+            filter = true;
+            EditorPrefs.SetBool(MultipleEditKey + _openedAsUtility, edit);
+        }
+        if (inspectorMode != _inspectorMode)
+        {
+            filter = true;
+            EditorPrefs.SetBool(InspectorModeKey + _openedAsUtility, inspectorMode);
+        }
+        if (customInspector != _useCustomInspectors)
+        {
+            filter = true;
+            EditorPrefs.SetBool(UseCustomInspectorsKey + _openedAsUtility, customInspector);
+        }
+
+        if (previousSelection)
+        {
+            PreviousSelection();
+
+            // set filter as false because the filter will be called from above call
+            filter = false;
+        }
+        else if (nextSelection)
+        {
+            NextSelection();
+
+            // set filter as false because the filter will be called from above callw
+            filter = false;
+        }
+
+        _inspectorMode = inspectorMode;
+        _multipleEdit = edit;
+        _useCustomInspectors = customInspector;
+
+        if (filter)
+            FilterSelected();
+
+        #endregion
+    }
+
+    /// <summary>
+    /// Open progress bar
+    /// </summary>
+    private bool HandleProgressBar(float progress)
+    {
+        if (EditorApplication.timeSinceStartup - _startSearchTime > 2)
+            EditorUtility.DisplayProgressBar("Searching", "Please wait", progress);
+
+        if (EditorApplication.timeSinceStartup - _startSearchTime > 10)
+            return true;
+
+        return false;
+    }
+
+    /// <summary>
+    /// Start a area with distinctive background
+    /// This function is based on NGUI's BeginContents with minor changes
+    /// </summary>
+    static public void BeginContents()
+    {
+        GUILayout.BeginHorizontal();
+        EditorGUILayout.BeginHorizontal("AS TextArea", GUILayout.MinHeight(10f));
+        GUILayout.BeginVertical();
+
+        GUILayout.Space(2f);
+    }
+
+    /// <summary>
+    /// Start a area with distinctive background
+    /// This function is based on NGUI's EndContents with minor changes
+    /// </summary>
+    static public void EndContents()
+    {
+        GUILayout.Space(3f);
+
+        GUILayout.EndVertical();
+        EditorGUILayout.EndHorizontal();
+
+        GUILayout.Space(3f);
+        GUILayout.EndHorizontal();
+
+        GUILayout.Space(3f);
+    }
+
+    /// <summary>
+    /// Draw a header with a name and possibly three buttons.
+    /// If any of these buttons callback are null, the correspondent button will be disabled
+    /// This function is also based on NGUI's DrawHeader.
+    /// </summary>
+    private bool DrawHeader(string text, DrawableProperty prop, Action onButtonClick = null, Action onApplyCallback = null,
+        Action onRevertCallback = null, Action openScriptAction = null, Action collapseChilds = null, Action expandChilds = null)
+    {
+        var state = GetState(prop, true);
+
+        GUILayout.Space(3f);
+        if (!state)
+            GUI.backgroundColor = new Color(0.8f, 0.8f, 0.8f);
+
+        GUILayout.BeginHorizontal();
+        GUI.changed = false;
+
+        text = "<b><size=11>" + text + "</size></b>";
+        if (state)
+            text = "\u25BC " + text;
+        else
+            text = "\u25BA " + text;
+
+        if (!GUILayout.Toggle(true, text, "dragtab", GUILayout.MinWidth(20f), GUILayout.ExpandWidth(true)))
+            state = !state;
+
+        #region Applyu/Revert
+
+        if (onApplyCallback == null)
+            GUI.enabled = false;
+        if (!GUILayout.Toggle(true, new GUIContent("Apply", tooltip: GUI.enabled ? "Apply changes to prefab" : "There's no changes to apply"), "dragtab", GUILayout.Width(50)))
+        {
+            if (onApplyCallback != null)
+                onApplyCallback();
+        }
+        GUI.enabled = true;
+
+        if (onRevertCallback == null)
+            GUI.enabled = false;
+        if (!GUILayout.Toggle(true, new GUIContent("Revert", tooltip: GUI.enabled ? "Revert changes" : "There's no changes to revert"), "dragtab", GUILayout.Width(60)))
+        {
+            if (onRevertCallback != null)
+                onRevertCallback();
+        }
+        GUI.enabled = true;
+
+        #endregion
+
+        GUILayout.Space(2);
+
+        #region Expand/Collapse
+
+        if (expandChilds == null)
+            GUI.enabled = false;
+        if (!GUILayout.Toggle(true, _expandGUIContent, "dragtab", GUILayout.Width(25)))
+        {
+            if (expandChilds != null)
+                expandChilds();
+        }
+        GUI.enabled = true;
+
+        if (collapseChilds == null)
+            GUI.enabled = false;
+        if (!GUILayout.Toggle(true, _collapseGUIContent, "dragtab", GUILayout.Width(25)))
+        {
+            if (collapseChilds != null)
+                collapseChilds();
+        }
+        GUI.enabled = true;
+
+        #endregion
+
+        GUILayout.Space(2);
+
+        #region Edit script
+
+        if (openScriptAction == null)
+        {
+            GUI.enabled = false;
+        }
+        if (!GUILayout.Toggle(true, _openScriptContent, "dragtab", GUILayout.Width(25)))
+        {
+            if (openScriptAction != null)
+                openScriptAction();
+        }
+        GUI.enabled = true;
+
+        #endregion
+
+        GUILayout.Space(2);
+
+        #region Highlight object
+
+        var toolTip = "Highlight object";
+        if (onButtonClick == null)
+        {
+            GUI.enabled = false;
+            toolTip = "Can't highlight multiple objects";
+        }
+        _highlightGUIContent.tooltip = toolTip;
+        if (!GUILayout.Toggle(true, _highlightGUIContent, "dragtab", GUILayout.Width(25)))
+        {
+            if (onButtonClick != null)
+                onButtonClick();
+        }
+        GUI.enabled = true;
+
+        #endregion
+
+        if (GUI.changed)
+            SetState(prop, state);
+
+        GUILayout.Space(2f);
+        GUILayout.EndHorizontal();
+        GUI.backgroundColor = Color.white;
+        if (!state)
+            GUILayout.Space(3f);
+        return state;
+    }
+
+    /// <summary>
+    /// Add lock option to menu (that where you choose to close a tab)
+    /// </summary>
+    /// <param name="menu"></param>
+    public void AddItemsToMenu(GenericMenu menu)
+    {
+        menu.AddItem(new GUIContent("Lock"), _locked, () =>
+        {
+            _locked = !_locked;
+            FilterSelected();
+        });
+        menu.AddItem(new GUIContent("New property Inspector"), false, InitWindow);
+    }
+
+    /// <summary>
+    /// Expand all objects.
+    /// </summary>
+    private void ExpandAll()
+    {
+        for (int i = 0; i < _drawable.Count; i++)
+        {
+            SetState(_drawable[i], true);
+            SetStateInChild(_drawable[i], true);
+        }
+        _expandAll = false;
+    }
+
+    /// <summary>
+    /// Collapse all objects.
+    /// </summary>
+    private void CollapseAll()
+    {
+        for (int i = 0; i < _drawable.Count; i++)
+        {
+            SetState(_drawable[i], false);
+            SetStateInChild(_drawable[i], false);
+        }
+        _collapseAll = false;
+    }
+
+    #endregion
+
     #region Filter
 
     /// <summary>
     /// Entry point for filtering.
     /// </summary>
-    private void FilterSelected()
+    private void FilterSelected(bool updateSelectedObjects = true)
     {
-        _drawable.Clear();
+        if (updateSelectedObjects)
+            UpdateSelectedObjects();
 
-        Debug.Log("SEARCH");
+        _drawable.Clear();
 
         if (_shouldUseCustomEditors)
             FilterForCustomInspector();
@@ -737,7 +1008,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
     {
         _searching = true;
 
-        var objects = _objectsToFilter;
+        var objects = _selectedObjects.ToArray();
 
         // Dictionary that will group drawables by their type
         Dictionary<Type, DrawableProperty> drawables = null;
@@ -819,7 +1090,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         _startSearchTime = EditorApplication.timeSinceStartup;
         _searching = true;
         bool isPath = _currentSearchedQuery.Contains('.');
-        var objects = _objectsToFilter;
+        var objects = _selectedObjects.ToArray();
 
         // Iterate through all selected objects
         for (int i = objects.Length - 1; i >= 0; i--)
@@ -889,7 +1160,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
         Dictionary<Type, DrawableProperty> drawables = new Dictionary<Type, DrawableProperty>();
 
-        var objects = _objectsToFilter;
+        var objects = _selectedObjects.ToArray();
 
         for (int i = objects.Length - 1; i >= 0; i--)
         {
@@ -1229,6 +1500,63 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
     #endregion
 
+    #region History Navigation
+
+    /// <summary>
+    /// Navigates to the next selection.
+    /// </summary>
+    private void NextSelection()
+    {
+        NavigateHistory(true);
+    }
+
+    /// <summary>
+    /// Navigates to the previous selection.
+    /// </summary>
+    private void PreviousSelection()
+    {
+        NavigateHistory(false);
+    }
+
+    /// <summary>
+    /// Navigate to next or previous selection depending on the parameter.
+    /// </summary>
+    /// <param name="next">True to navigate to next selection</param>
+    private void NavigateHistory(bool next)
+    {
+        if (_currentHistoryNode == null)
+        {
+            UpdateSelectedObjects();
+            return;
+        }
+
+        LinkedListNode<List<int>> historyNode;
+        if (next)
+            historyNode = _currentHistoryNode.Next;
+        else
+            historyNode = _currentHistoryNode.Previous;
+
+        if (historyNode != null)
+        {
+            _selectedObjects.Clear();
+            for (int i = 0; i < historyNode.Value.Count; i++)
+            {
+                var nextSelection = historyNode.Value[i];
+                var uObject = EditorUtility.InstanceIDToObject(nextSelection);
+                if (uObject == null)
+                    continue;
+
+                _selectedObjects.Add(uObject);
+            }
+
+            _currentHistoryNode = historyNode;
+
+            FilterSelected(false);
+        }
+    }
+
+    #endregion
+
     #region Compare
 
     /// <summary>
@@ -1444,228 +1772,23 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
     /// a object can be destroy while we are still holding it,
     /// so we remove from our list objects that have been destroyed.
     /// </summary>
-    private void UpdateLockedObject()
+    /// <returns>True if there was any changes.</returns>
+    private bool UpdateSelectedObjects()
     {
-        if (_lockedObjects == null)
-            _lockedObjects = new Object[0];
-
-        var objects = _lockedObjects.ToList();
-        for (int i = objects.Count - 1; i >= 0; i--)
+        if (_locked)
         {
-            if (objects[i] == null || !objects[i])
-                objects.RemoveAt(i);
+            return _selectedObjects.RemoveWhere(o => o == null || !o) > 0;
         }
 
-        _lockedObjects = objects.ToArray();
-    }
+        // if what we have selected is the same as the selection
+        // do nothing because there's nothing new to do
+        if (_selectedObjects.SetEquals(Selection.objects))
+            return false;
 
-    #endregion
-
-    #region UI Helpers
-
-    /// <summary>
-    /// Open progress bar
-    /// </summary>
-    private bool HandleProgressBar(float progress)
-    {
-        if (EditorApplication.timeSinceStartup - _startSearchTime > 2)
-            EditorUtility.DisplayProgressBar("Searching", "Please wait", progress);
-
-        if (EditorApplication.timeSinceStartup - _startSearchTime > 10)
-            return true;
-
-        return false;
-    }
-
-    /// <summary>
-    /// Start a area with distinctive background
-    /// This function is based on NGUI's BeginContents with minor changes
-    /// </summary>
-    static public void BeginContents()
-    {
-        GUILayout.BeginHorizontal();
-        EditorGUILayout.BeginHorizontal("AS TextArea", GUILayout.MinHeight(10f));
-        GUILayout.BeginVertical();
-
-        GUILayout.Space(2f);
-    }
-
-    /// <summary>
-    /// Start a area with distinctive background
-    /// This function is based on NGUI's EndContents with minor changes
-    /// </summary>
-    static public void EndContents()
-    {
-        GUILayout.Space(3f);
-
-        GUILayout.EndVertical();
-        EditorGUILayout.EndHorizontal();
-
-        GUILayout.Space(3f);
-        GUILayout.EndHorizontal();
-
-        GUILayout.Space(3f);
-    }
-
-    /// <summary>
-    /// Draw a header with a name and possibly three buttons.
-    /// If any of these buttons callback are null, the correspondent button will be disabled
-    /// This function is also based on NGUI's DrawHeader.
-    /// </summary>
-    private bool DrawHeader(string text, DrawableProperty prop, Action onButtonClick = null, Action onApplyCallback = null,
-        Action onRevertCallback = null, Action openScriptAction = null, Action collapseChilds = null, Action expandChilds = null)
-    {
-        var state = GetState(prop, true);
-
-        GUILayout.Space(3f);
-        if (!state)
-            GUI.backgroundColor = new Color(0.8f, 0.8f, 0.8f);
-
-        GUILayout.BeginHorizontal();
-        GUI.changed = false;
-
-        text = "<b><size=11>" + text + "</size></b>";
-        if (state)
-            text = "\u25BC " + text;
-        else
-            text = "\u25BA " + text;
-
-        if (!GUILayout.Toggle(true, text, "dragtab", GUILayout.MinWidth(20f), GUILayout.ExpandWidth(true)))
-            state = !state;
-
-        #region Applyu/Revert
-
-        if (onApplyCallback == null)
-            GUI.enabled = false;
-        if (!GUILayout.Toggle(true, new GUIContent("Apply", tooltip: GUI.enabled ? "Apply changes to prefab" : "There's no changes to apply"), "dragtab", GUILayout.Width(50)))
-        {
-            if (onApplyCallback != null)
-                onApplyCallback();
-        }
-        GUI.enabled = true;
-
-        if (onRevertCallback == null)
-            GUI.enabled = false;
-        if (!GUILayout.Toggle(true, new GUIContent("Revert", tooltip: GUI.enabled ? "Revert changes" : "There's no changes to revert"), "dragtab", GUILayout.Width(60)))
-        {
-            if (onRevertCallback != null)
-                onRevertCallback();
-        }
-        GUI.enabled = true;
-
-        #endregion
-
-        GUILayout.Space(2);
-
-        #region Expand/Collapse
-
-        if (expandChilds == null)
-            GUI.enabled = false;
-        if (!GUILayout.Toggle(true, _expandGUIContent, "dragtab", GUILayout.Width(25)))
-        {
-            if (expandChilds != null)
-                expandChilds();
-        }
-        GUI.enabled = true;
-
-        if (collapseChilds == null)
-            GUI.enabled = false;
-        if (!GUILayout.Toggle(true, _collapseGUIContent, "dragtab", GUILayout.Width(25)))
-        {
-            if (collapseChilds != null)
-                collapseChilds();
-        }
-        GUI.enabled = true;
-
-        #endregion
-
-        GUILayout.Space(2);
-
-        #region Edit script
-
-        if (openScriptAction == null)
-        {
-            GUI.enabled = false;
-        }
-        if (!GUILayout.Toggle(true, _openScriptContent, "dragtab", GUILayout.Width(25)))
-        {
-            if (openScriptAction != null)
-                openScriptAction();
-        }
-        GUI.enabled = true;
-
-        #endregion
-
-        GUILayout.Space(2);
-
-        #region Highlight object
-
-        var toolTip = "Highlight object";
-        if (onButtonClick == null)
-        {
-            GUI.enabled = false;
-            toolTip = "Can't highlight multiple objects";
-        }
-        _highlightGUIContent.tooltip = toolTip;
-        if (!GUILayout.Toggle(true, _highlightGUIContent, "dragtab", GUILayout.Width(25)))
-        {
-            if (onButtonClick != null)
-                onButtonClick();
-        }
-        GUI.enabled = true;
-
-        #endregion
-
-        if (GUI.changed)
-            SetState(prop, state);
-
-        GUILayout.Space(2f);
-        GUILayout.EndHorizontal();
-        GUI.backgroundColor = Color.white;
-        if (!state)
-            GUILayout.Space(3f);
-        return state;
-    }
-
-    /// <summary>
-    /// Add lock option to menu (that where you choose to close a tab)
-    /// </summary>
-    /// <param name="menu"></param>
-    public void AddItemsToMenu(GenericMenu menu)
-    {
-        menu.AddItem(new GUIContent("Lock"), _locked, () =>
-        {
-            _locked = !_locked;
-            _lockedObjects = Selection.objects;
-            FilterSelected();
-        });
-        menu.AddItem(new GUIContent("New property Inspector"), false, InitWindow);
-    }
-
-    /// <summary>
-    /// Expand all objects.
-    /// </summary>
-    private void ExpandAll()
-    {
-        for (int i = 0; i < _drawable.Count; i++)
-        {
-            SetState(_drawable[i], true);
-            SetStateInChild(_drawable[i], true);
-        }
-        _expandAll = false;
-    }
-
-    /// <summary>
-    /// Collapse all objects.
-    /// </summary>
-    private void CollapseAll()
-    {
-        for (int i = 0; i < _drawable.Count; i++)
-        {
-            SetState(_drawable[i], false);
-            SetStateInChild(_drawable[i], false);
-        }
-        _collapseAll = false;
+        _selectedObjects.Clear();
+        _selectedObjects.UnionWith(Selection.objects);
+        _currentHistoryNode = _selectionHistory.AddLast(_selectedObjects.Select(o => o.GetInstanceID()).ToList());
+        return true;
     }
 
     #endregion
