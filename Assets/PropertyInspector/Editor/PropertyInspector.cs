@@ -177,6 +177,23 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         }
     }
 
+    private static GUIContent _selectObjectsContentCache;
+    private static GUIContent _selectObjectsContent
+    {
+        get
+        {
+            if (_selectObjectsContentCache == null)
+            {
+                var textToLoad = "icons/UnityEditor.HierarchyWindow.png";
+                if (EditorGUIUtility.isProSkin)
+                    textToLoad = "icons/d_UnityEditor.HierarchyWindow.png";
+
+                _selectObjectsContentCache = new GUIContent(EditorGUIUtility.Load(textToLoad) as Texture2D, "Select all objects");
+            }
+            return _selectObjectsContentCache;
+        }
+    }
+
     private static GUIContent _openScriptContentCache;
     private static GUIContent _openScriptContent
     {
@@ -439,7 +456,8 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         }
 
         EditorGUILayout.BeginVertical();
-        _scrollPosition = EditorGUILayout.BeginScrollView(_scrollPosition, GUILayout.Width(position.width), GUILayout.Height(position.height - 100));
+        _scrollPosition = EditorGUILayout.BeginScrollView(_scrollPosition, GUILayout.Width(position.width),
+            GUILayout.Height(position.height - 100));
 
         if (_expandAll)
             ExpandAll();
@@ -451,36 +469,10 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         for (int i = 0; i < _drawable.Count; i++)
         {
             var current = _drawable[i];
-
-            if (DrawObjectHeader(current, false))
-            {
-                BeginContents();
-                {
-                    DrawObject(current);
-
-                    // do basically the same we just did but for every child of this object
-                    for (int j = 0; j < current.Childs.Count; j++)
-                    {
-                        var currentChild = current.Childs[j];
-
-                        if (DrawObjectHeader(currentChild, true))
-                        {
-                            BeginContents();
-
-                            DrawObject(currentChild);
-
-                            EndContents();
-
-                            if (ShouldSkipDrawing())
-                                break;
-                        }
-                    }
-                }
-                EndContents();
-
-                if (ShouldSkipDrawing())
-                    break;
-            }
+            
+            // Draw this objects and all its children
+            if (DrawObjectAndChildren(current, false))
+                break;
         }
 
         EditorGUILayout.EndScrollView();
@@ -564,6 +556,33 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         }
 
         return (DrawHeader(name, property, buttonCallback, applyCallback, revertCallback, openScriptCallback, collapseChilds, expandChilds));
+    }
+
+    private bool DrawObjectAndChildren(DrawableProperty current, bool useTypeAsName)
+    {
+        if (DrawObjectHeader(current, useTypeAsName))
+        {
+            BeginContents();
+            {
+                DrawObject(current);
+
+                // do basically the same we just did but for every child of this object
+                for (int j = 0; j < current.Childs.Count; j++)
+                {
+                    var currentChild = current.Childs[j];
+
+                    // recursive call so that every child of this object gets draw with its children as well
+                    // no matter how many nested children there are
+                    DrawObjectAndChildren(currentChild, true);
+                }
+            }
+            EndContents();
+
+            if (ShouldSkipDrawing())
+                return true;
+        }
+
+        return false;
     }
 
     /// <summary>
@@ -660,7 +679,17 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
         EditorGUILayout.BeginVertical();
 
+        EditorGUILayout.BeginHorizontal();
+
         EditorGUILayout.LabelField(_titleGUIContent);
+
+        GUILayout.FlexibleSpace();
+
+        var selectAllObjects = GUILayout.Button(_selectObjectsContent);
+
+        EditorGUILayout.EndHorizontal();
+
+        GUILayout.Space(3);
 
         EditorGUILayout.BeginHorizontal();
 
@@ -748,7 +777,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
             filter = true;
             EditorPrefs.SetBool(UseCustomInspectorsKey + _openedAsUtility, customInspector);
         }
-
+        
         if (previousSelection)
         {
             PreviousSelection();
@@ -762,6 +791,11 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
             // set filter as false because the filter will be called from above callw
             filter = false;
+        }
+
+        if (selectAllObjects)
+        {
+            SelectAllObjects();
         }
 
         _inspectorMode = inspectorMode;
@@ -1553,6 +1587,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
             _currentHistoryNode = historyNode;
 
+            SelectAllObjects();
             FilterSelected(false);
         }
     }
@@ -1640,19 +1675,37 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
             toHighlight = comp.gameObject;
 
         if (Event.current.control)
-            return () => Selection.objects = new[] { toHighlight };
+        {
+            return () => SelectObject(toHighlight);
+        }
         else
         {
             return () =>
             {
                 if (EditorApplication.timeSinceStartup - _lastTimeClickToHightObject < .3f)
-                    Selection.objects = new[] { toHighlight };
+                    SelectObject(toHighlight);
                 else
                     EditorGUIUtility.PingObject(toHighlight);
 
                 _lastTimeClickToHightObject = EditorApplication.timeSinceStartup;
             };
         }
+    }
+
+    /// <summary>
+    /// Select in project or scene view all objects being edited now
+    /// </summary>
+    private void SelectAllObjects()
+    {
+        Selection.objects = _selectedObjects.ToArray();
+    }
+
+    /// <summary>
+    /// Select in project or scene view a list of object
+    /// </summary>
+    private void SelectObject(params Object[] objects)
+    {
+        Selection.objects = objects;
     }
 
     /// <summary>
@@ -1778,6 +1831,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         for (int i = 0; i < property.Childs.Count; i++)
         {
             SetState(property.Childs[i], value);
+            SetStateInChild(property.Childs[i], value);
         }
     }
 
