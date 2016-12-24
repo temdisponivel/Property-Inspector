@@ -4,5 +4,5 @@ using System.Collections.Generic;
 
 public class Teste : MonoBehaviour
 {
-    public List<Material> Materials;
+    public List<TesteList> Materials;
 }

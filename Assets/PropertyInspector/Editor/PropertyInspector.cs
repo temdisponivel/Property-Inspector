@@ -85,6 +85,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
     #region Properties
 
     private readonly Version Version = new Version(1, 0, 0, 1);
+    private const string _docsUrl = "http://goo.gl/kyX3A3";
 
     #region Editorprefs Keys
 
@@ -622,12 +623,18 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
                 }
                 EditorGUIUtility.labelWidth = previousWidth;
             }
+            //done to prevent warnings of "ex" is declared but never used
+#if DEBUGGING
             catch (Exception ex)
             {
-#if DEBUGGING
+
+
                 Debug.LogError(ex, this);
-#endif
             }
+#else
+            catch { }
+#endif
+
         }
         else
         {
@@ -641,12 +648,17 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
                         name = prop.displayName;
                     EditorGUILayout.PropertyField(prop, new GUIContent(name, serializedProperty), prop.hasVisibleChildren);
                 }
-                catch (Exception ex)
-                {
+                //done to prevent warnings of "ex" is declared but never used
 #if DEBUGGING
-                    Debug.LogError(ex, this);
+            catch (Exception ex)
+            {
+
+
+                Debug.LogError(ex, this);
+            }
+#else
+                catch { }
 #endif
-                }
             }
         }
 
@@ -1353,7 +1365,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
     private void FilterProperties(DrawableProperty father, DrawableProperty child, SerializedObject serializedObject, SerializedProperty iterator, string search, bool isPath)
     {
         bool add = false;
-        bool stepInto = true;
+        var stepInto = true;
 
         // Get the next property on this level (never go deeper inside a property)
         while (iterator.NextVisible(stepInto))
@@ -1366,34 +1378,34 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
             // See if the name of the property match the search
             SerializedProperty property;
-            if (Compare(iterator, search, isPath))
+
+            if (isPath)
+            {
+                // if the property is a path, look for that propety using the path typed
+                property = serializedObject.FindProperty(_currentSearchedQuery);
+                if (property != null)
+                {
+                    if (child.PropertiesPaths.Contains(property.propertyPath))
+                        continue;
+
+                    stepInto = false;
+
+                    child.PropertiesPaths.Add(property.propertyPath);
+                    add = true;
+                }
+            }
+            else if (Compare(iterator, search, true))
             {
                 string path = iterator.propertyPath;
-                //if (iterator.depth > 1)
-                //{
-                //    path = path.ind
-                //}
                 property = serializedObject.FindProperty(path);
                 if (property == null)
                     continue;
 
+                stepInto = false;
+
                 // add the property to the drawable property
                 add = true;
                 child.PropertiesPaths.Add(property.propertyPath);
-            }
-
-            if (!isPath)
-                continue;
-
-            // if the property is a path, look for that propety using the path typed
-            property = serializedObject.FindProperty(_currentSearchedQuery);
-            if (property != null)
-            {
-                if (child.PropertiesPaths.Contains(property.propertyPath))
-                    continue;
-
-                child.PropertiesPaths.Add(property.propertyPath);
-                add = true;
             }
         }
 
@@ -1781,7 +1793,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
     private Action GetOpenScriptCallback(DrawableProperty property)
     {
         var scriptRef = property.Object.FindProperty("m_Script");
-        if (scriptRef == null)
+        if (scriptRef == null || scriptRef.propertyType != SerializedPropertyType.ObjectReference)
             return null;
 
         return () => AssetDatabase.OpenAsset(scriptRef.objectReferenceValue);
@@ -1981,10 +1993,10 @@ All changes made with Property Inspector can be undone (CTRL + Z | CMD + Z) - ex
 
 If you have any question, ran into bug or problem or have a suggestion please don’t hesitate in contating me at: temdisponivel@gmail.com.
 
-For more info, please see the pdf file inside Property Inspector’s folder or visit: http://goo.gl/kyX3A3
-";
+For more info, please see the pdf file inside Property Inspector’s folder or visit docs below";
 
-        EditorUtility.DisplayDialog(title, message, "OK");
+        if (EditorUtility.DisplayDialog(title, message, "Docs", "OK"))
+            Application.OpenURL(_docsUrl);
     }
 
     #endregion
