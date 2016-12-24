@@ -84,7 +84,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
     #region Properties
 
-    private readonly Version Version = new Version(1, 0, 0, 0);
+    private readonly Version Version = new Version(1, 0, 0, 1);
 
     #region Editorprefs Keys
 
@@ -204,7 +204,10 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         {
             if (_openScriptContentCache == null)
             {
-                var textToLoad = "icons/UnityEditor.ConsoleWindow.png";
+                var textToLoad = "icons/d_UnityEditor.ConsoleWindow.png";
+                //var textToLoad = "icons/UnityEditor.ConsoleWindow.png";
+                if (EditorGUIUtility.isProSkin)
+                    textToLoad = "icons/UnityEditor.ConsoleWindow.png";
                 _openScriptContentCache = new GUIContent(EditorGUIUtility.Load(textToLoad) as Texture2D, "Edit script");
             }
             return _openScriptContentCache;
@@ -774,7 +777,10 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         if (!changed)
             GUI.enabled = true;
 
+        _expandGUIContent.tooltip = "Expand all objects";
         _expandAll = GUILayout.Button(_expandGUIContent, "miniButtonLeft");
+
+        _collapseGUIContent.tooltip = "Collapse all objects";
         _collapseAll = GUILayout.Button(_collapseGUIContent, "miniButtonRight");
 
         EditorGUILayout.EndHorizontal();
@@ -904,18 +910,26 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
         #region Applyu/Revert
 
+        var toolTip = "Apply changes to prefab";
         if (onApplyCallback == null)
+        {
             GUI.enabled = false;
-        if (!GUILayout.Toggle(true, new GUIContent("Apply", tooltip: GUI.enabled ? "Apply changes to prefab" : "There's no changes to apply"), "dragtab", GUILayout.Width(50)))
+            toolTip = "No changes to apply";
+        }
+        if (!GUILayout.Toggle(true, new GUIContent("Apply", tooltip: toolTip), "dragtab", GUILayout.Width(50)))
         {
             if (onApplyCallback != null)
                 onApplyCallback();
         }
         GUI.enabled = true;
 
+        toolTip = "Revert changes from prefab";
         if (onRevertCallback == null)
+        {
             GUI.enabled = false;
-        if (!GUILayout.Toggle(true, new GUIContent("Revert", tooltip: GUI.enabled ? "Revert changes" : "There's no changes to revert"), "dragtab", GUILayout.Width(60)))
+            toolTip = "No changes to revert";
+        }
+        if (!GUILayout.Toggle(true, new GUIContent("Revert", tooltip: toolTip), "dragtab", GUILayout.Width(60)))
         {
             if (onRevertCallback != null)
                 onRevertCallback();
@@ -928,8 +942,13 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
         #region Expand/Collapse
 
+        toolTip = "Expand children";
         if (expandChilds == null)
+        {
             GUI.enabled = false;
+            toolTip = "No children to expand";
+        }
+        _expandGUIContent.tooltip = toolTip;
         if (!GUILayout.Toggle(true, _expandGUIContent, "dragtab", GUILayout.Width(25)))
         {
             if (expandChilds != null)
@@ -937,8 +956,13 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         }
         GUI.enabled = true;
 
+        toolTip = "Collapse children";
         if (collapseChilds == null)
+        {
             GUI.enabled = false;
+            toolTip = "No children to collapse";
+        }
+        _collapseGUIContent.tooltip = toolTip;
         if (!GUILayout.Toggle(true, _collapseGUIContent, "dragtab", GUILayout.Width(25)))
         {
             if (collapseChilds != null)
@@ -952,10 +976,13 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
         #region Edit script
 
+        toolTip = "Edit script";
         if (openScriptAction == null)
         {
             GUI.enabled = false;
+            toolTip = "No editable script";
         }
+        _openScriptContent.tooltip = toolTip;
         if (!GUILayout.Toggle(true, _openScriptContent, "dragtab", GUILayout.Width(25)))
         {
             if (openScriptAction != null)
@@ -969,7 +996,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
         #region Highlight object
 
-        var toolTip = "Highlight object";
+        toolTip = "Highlight object";
         if (onButtonClick == null)
         {
             GUI.enabled = false;
@@ -1924,24 +1951,38 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
     {
         var title = ("About Property Inspector v." + Version);
         var message = @"Use the search bar to filter a property.
-You can use the prefixed: “s:”, “e:”, “t:”.
+You can use the prefixs: “s:”, “e:”, “t:”.
+Where:
 “s:”: Starts with - will show only properties whose names starts with the text typed.
 “e:”: Ends with - will show only properties whose names ends with the text typed.
 “t:”: Type - will show only properties whose type match the text typed.
+
 None of those options are case sensitive.
-You can search using the path of the property you want to see.
-For example: 'Player.HealthHandler.Life' would only show the property Life of HealthHandler of Player.  
-These options ARE case sensitive.
-Multi-edit group objects and components by type and lets you edit multiple objects as if they were one. 
-All changes made on this mode affect all object in the group.
+
+    When you type a search, all properties whose name contains the query will be shown. Even deeply nested properties.
+
+You can search using the path of the property you want to see.For example: Player.HealthHandler.Life would only show the property Life of the property HealthHandler of the property Player.  This options ARE case sensitive.
+
+Multi-edit group objects and components by type and lets you edit multiple objects as if they were one. All changes made on this mode affect all object in the group.
+
 Inspector mode will show all properties of all object when there’s no search typed.
+
+The Custom inspectors mode will draw components and objects using the inspector you’ve draw or, if there’s none custom inspector for that type, it will be drawn using the custom inspector (same as Unity’s Inspector). Note that if there’s is a custom inspector to use, the undo option will only work if the custom inspector support it.
+
 Apply all/Revert all will apply or revert all changes made in objects that are instances of prefabs.
+
 Apply/Revert buttons in headers will apply or revert changes made in that object.
+
+Edit script button will be enabled when you have any asset defined by a script - components, scriptable objects, etc - and will open this script if clicked.
+
 Highlight button highlights the objects in the hierarchy or project.
+
 All changes made with Property Inspector can be undone (CTRL + Z | CMD + Z) - except apply/revert.
-If you have any question, ran into bug or problem or have a suggestion
-please don’t hesitate in contating me at: temdisponivel@gmail.com.
-For more info, please see the pdf file inside PropertyInspector’s folder or visit: http://goo.gl/kyX3A3";
+
+If you have any question, ran into bug or problem or have a suggestion please don’t hesitate in contating me at: temdisponivel@gmail.com.
+
+For more info, please see the pdf file inside Property Inspector’s folder or visit: http://goo.gl/kyX3A3
+";
 
         EditorUtility.DisplayDialog(title, message, "OK");
     }
