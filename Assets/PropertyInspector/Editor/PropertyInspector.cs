@@ -1124,6 +1124,9 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
             // if not, just add to the global list
             if (_multipleEdit)
             {
+                if (currentObject == null)
+                    continue;
+
                 if (!drawables.TryGetValue(currentObject.GetType(), out drawable))
                     drawables[currentObject.GetType()] = drawable = new DrawableProperty();
 
@@ -1153,6 +1156,8 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
                     // if it's not multi editing, add to the child list
                     if (_multipleEdit)
                     {
+                        if (currentChildObject == null)
+                            continue;
                         if (!drawables.TryGetValue(currentChildObject.GetType(), out childDrawable))
                             drawables[currentChildObject.GetType()] = childDrawable = new DrawableProperty();
 
@@ -1194,6 +1199,10 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         for (int i = objects.Length - 1; i >= 0; i--)
         {
             var currentObject = objects[i];
+
+            if (currentObject == null)
+                continue;
+
             var serializedObject = new SerializedObject(currentObject);
             var iterator = serializedObject.GetIterator();
 
@@ -1227,6 +1236,9 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
                 for (int j = 0; j < components.Length; j++)
                 {
+                    if (components[j] == null)
+                        continue;
+
                     // if it's not a Transform - this is necessary because - for some reason - Unity doesn't like to use PropertyField with transforms
                     // Filter and add the resulting drawable property as child of the game object drawable property
                     FilterObject(drawable, components[j], searchAsLow, isPath);
@@ -1263,6 +1275,10 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         for (int i = objects.Length - 1; i >= 0; i--)
         {
             var currentObject = objects[i];
+
+            if (currentObject == null)
+                continue;
+
             var serializedObject = new SerializedObject(currentObject);
             var iterator = serializedObject.GetIterator();
 
@@ -1296,6 +1312,9 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
                 for (int j = 0; j < components.Length; j++)
                 {
+                    if (components[j] == null)
+                        continue;
+
                     var drawableChild = FilterObject(drawable, components[j], searchAsLow, isPath);
                     AddObjectsAndProperties(drawables, drawableChild, components[j]);
                 }
