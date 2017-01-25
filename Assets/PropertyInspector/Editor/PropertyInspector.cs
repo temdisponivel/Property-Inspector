@@ -1638,9 +1638,10 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         var objects = property.Object.targetObjects;
         _rightClickedObjects = objects.ToList();
         var type = objects[0].GetType();
-        var methods = type.GetMethods(BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+        var methods = type.GetMethods(BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic).ToList();
         GenericMenu menu = new GenericMenu();
-        for (int i = 0; i < methods.Length; i++)
+        methods.Sort((m1, m2) => string.Compare(m1.Name, m2.Name));
+        for (int i = 0; i < methods.Count; i++)
         {
             var method = methods[i];
             if (method.GetParameters().Length != 0)
@@ -1671,7 +1672,9 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         {
             for (int i = 0; i < _rightClickedObjects.Count; i++)
             {
-                method.Invoke(_rightClickedObjects[i], null);
+                var value = method.Invoke(_rightClickedObjects[i], null);
+                if (value != null)
+                    Debug.Log(string.Format("Method return value for object {0}: {1}", _rightClickedObjects[i], value));
             }
         }
         _rightClickedObjects = null;
