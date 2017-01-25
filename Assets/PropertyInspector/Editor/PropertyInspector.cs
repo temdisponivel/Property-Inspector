@@ -1665,7 +1665,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         var method = userData as MethodInfo;
         if (method.IsStatic)
         {
-            method.Invoke(_rightClickedObjects[0], null);
+            method.Invoke(null, null);
         }
         else
         {
