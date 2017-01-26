@@ -41,6 +41,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         {
             get { return UnityObjects[0].GetInstanceID(); }
         }
+        public int ButtonsId { get { return Id*99999; } }
         public List<Object> UnityObjects { get; set; }
         public Type Type { get; set; }
         public SerializedObject Object { get; set; }
@@ -73,6 +74,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
     private const string InspectorModeKey = "PIInspectorMode";
     private const string MultipleEditKey = "PIMultiEdit";
     private const string UseCustomInspectorsKey = "PIUseCustomInspectors";
+    private const string ShowMethodsAsButtons = "PIShowMethodsAsButtons";
 
     private bool _openedAsUtility { get; set; }
     private Vector2 _scrollPosition = Vector2.zero;
@@ -91,6 +93,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
     private bool _useCustomInspectors;
     private bool _applyAll;
     private bool _revertAll;
+    private bool _showMethodAsButtons;
     private readonly Dictionary<int, bool> _headersState = new Dictionary<int, bool>();
     private List<Object> _rightClickedObjects;
 
@@ -335,6 +338,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         window._inspectorMode = EditorPrefs.GetBool(InspectorModeKey + window._openedAsUtility, false);
         window._multipleEdit = EditorPrefs.GetBool(MultipleEditKey + window._openedAsUtility, false);
         window._useCustomInspectors = EditorPrefs.GetBool(UseCustomInspectorsKey + window._openedAsUtility, false);
+        window._showMethodAsButtons = EditorPrefs.GetBool(ShowMethodsAsButtons + window._openedAsUtility, false);
 
         window.FilterSelected();
     }
@@ -415,6 +419,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         var edit = EditorGUILayout.ToggleLeft(new GUIContent("Multi-edit", tooltip: "Edit multiple objects as one"), _multipleEdit, GUILayout.MaxWidth(70));
         var inspectorMode = EditorGUILayout.ToggleLeft(new GUIContent("Inspector mode", tooltip: "Show all properties when search query is empty (slow when viewing numerous objects without query)"), _inspectorMode, GUILayout.MaxWidth(105));
         var customInspector = EditorGUILayout.ToggleLeft(new GUIContent("Custom Inspectors", tooltip: "Show objects and components using its custom (or default) inspectors"), _useCustomInspectors, GUILayout.MaxWidth(125));
+        var showMethodsAsButtons = EditorGUILayout.ToggleLeft(new GUIContent("Methods buttons", tooltip: "Show object's methods as buttons at the end of the inspector"), _showMethodAsButtons, GUILayout.MaxWidth(125));
 
         GUILayout.FlexibleSpace();
 
@@ -462,6 +467,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         _inspectorMode = inspectorMode;
         _multipleEdit = edit;
         _useCustomInspectors = customInspector;
+        _showMethodAsButtons = showMethodsAsButtons;
 
         if (filter)
             FilterSelected();
@@ -577,12 +583,16 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
                             DrawObject(currentChild);
 
+                            DrawMethodButtons(currentChild);
+
                             EndContents();
 
                             if (ShouldSkipDrawing())
                                 break;
                         }
                     }
+
+                    DrawMethodButtons(current);
                 }
                 EndContents();
 
@@ -662,7 +672,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
             revertCallback = () => RevertChangesToPrefab(property);
         }
 
-        if (property.Childs.Count > 0)
+        if (property.Childs.Count > 0 || _showMethodAsButtons)
         {
             collapseChilds = () => SetStateInChild(property, false);
             expandChilds = () => SetStateInChild(property, true);
@@ -1404,8 +1414,13 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
     private bool GetState(DrawableProperty property, bool defaultValue)
     {
+        return GetState(property.Id, defaultValue);
+    }
+
+    private bool GetState(int id, bool defaultValue)
+    {
         bool state;
-        if (_headersState.TryGetValue(property.Id, out state))
+        if (_headersState.TryGetValue(id, out state))
             return state;
         return defaultValue;
     }
@@ -1413,8 +1428,6 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
     private void SetState(DrawableProperty property, bool value)
     {
         _headersState[property.Id] = value;
-        for (int i = 0; i < property.Childs.Count; i++)
-            SetState(property.Childs[i], value);
     }
 
     private void SetStateInChild(DrawableProperty property, bool value)
@@ -1423,6 +1436,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         {
             SetState(property.Childs[i], value);
         }
+        _headersState[property.ButtonsId] = value;
     }
 
     #endregion
@@ -1490,13 +1504,8 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         GUILayout.BeginHorizontal();
         GUI.changed = false;
 
-        text = "<b><size=11>" + text + "</size></b>";
-        if (state)
-            text = "\u25BC " + text;
-        else
-            text = "\u25BA " + text;
         var evType = Event.current.type;
-        if (!GUILayout.Toggle(true, text, "dragtab", GUILayout.MinWidth(20f), GUILayout.ExpandWidth(true)))
+        if (DrawHeader(text, state))
         {
             if (evType == EventType.MouseUp && Event.current.control)
             {
@@ -1600,6 +1609,16 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         return state;
     }
 
+    private bool DrawHeader(string text, bool state)
+    {
+        text = "<b><size=11>" + text + "</size></b>";
+        if (state)
+            text = "\u25BC " + text;
+        else
+            text = "\u25BA " + text;
+        return !GUILayout.Toggle(true, text, "dragtab", GUILayout.MinWidth(20f), GUILayout.ExpandWidth(true));
+    }
+
     /// <summary>
     /// Add lock option to menu (that where you choose to close a tab)
     /// </summary>
@@ -1620,6 +1639,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         for (int i = 0; i < _drawable.Count; i++)
         {
             SetState(_drawable[i], true);
+            //_headersState[_drawable[i].ButtonsId] = true;
         }
         _expandAll = false;
     }
@@ -1629,57 +1649,58 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         for (int i = 0; i < _drawable.Count; i++)
         {
             SetState(_drawable[i], false);
+            //_headersState[_drawable[i].ButtonsId] = false;
         }
         _collapseAll = false;
     }
 
     private void OpenContextMenu(DrawableProperty property)
     {
-        var objects = property.Object.targetObjects;
-        _rightClickedObjects = objects.ToList();
-        var type = objects[0].GetType();
-        var methods = type.GetMethods(BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic).ToList();
+        var methods = GetMethods(property);
         GenericMenu menu = new GenericMenu();
-        methods.Sort((m1, m2) => string.Compare(m1.Name, m2.Name));
         for (int i = 0; i < methods.Count; i++)
         {
             var method = methods[i];
-            if (method.GetParameters().Length != 0)
-                continue;
-            if (method.ContainsGenericParameters)
-                continue;
-            if (method.IsGenericMethod)
-                continue;
-            if (method.IsSpecialName)
-                continue;
-
-            menu.AddItem(new GUIContent(method.Name), false, OnContextCallback, method);
+            menu.AddItem(new GUIContent(method.Name), false, (data) => CallMethod(data as MethodInfo, _rightClickedObjects), method);
         }
 
         menu.ShowAsContext();
     }
 
-    private void OnContextCallback(object userData)
+    private void DrawMethodButtons(DrawableProperty property)
     {
-        if (_rightClickedObjects == null)
-            return;
-        var method = userData as MethodInfo;
-        if (method.IsStatic)
+        if (_showMethodAsButtons)
         {
-            method.Invoke(null, null);
-        }
-        else
-        {
-            for (int i = 0; i < _rightClickedObjects.Count; i++)
+            var state = GetState(property.ButtonsId, false);
+            if (!state)
+                GUI.backgroundColor = new Color(0.8f, 0.8f, 0.8f);
+            GUILayout.Space(5f);
+            if (DrawHeader("Methods", state))
             {
-                var value = method.Invoke(_rightClickedObjects[i], null);
-                if (value != null)
-                    Debug.Log(string.Format("Method return value for object {0}: {1}", _rightClickedObjects[i], value));
+                state = !state;
+                _headersState[property.ButtonsId] = state;
             }
-        }
-        _rightClickedObjects = null;
-    }
 
+            if (state)
+            {
+                BeginContents();
+                {
+                    var methods = GetMethods(property);
+                    for (int i = 0; i < methods.Count; i++)
+                    {
+                        var method = methods[i];
+                        if (GUILayout.Button(method.Name))
+                        {
+                            CallMethod(method, property.UnityObjects);
+                        }
+                    }
+                }
+                EndContents();
+            }
+            GUI.backgroundColor = Color.white;
+        }
+    }
+    
     #endregion
 
     #region Help
@@ -1711,6 +1732,38 @@ please don’t hesitate in contating me at: temdisponivel@gmail.com.
 For more info, please see the pdf file inside PropertyInspector’s folder or visit: http://goo.gl/kyX3A3";
 
         EditorUtility.DisplayDialog(title, message, "OK");
+    }
+
+    #endregion
+
+    #region Utils
+
+    private List<MethodInfo> GetMethods(DrawableProperty prop)
+    {
+        var objects = prop.Object.targetObjects;
+        _rightClickedObjects = objects.ToList();
+        var type = objects[0].GetType();
+        var methods = type.GetMethods(BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic).ToList();
+        methods = methods.FindAll(m => !m.ContainsGenericParameters && !m.IsGenericMethod && !m.IsSpecialName && m.GetParameters().Length == 0);
+        methods.Sort((m1, m2) => string.Compare(m1.Name, m2.Name));
+        return methods;
+    }
+
+    private void CallMethod(MethodInfo method, List<Object> objects)
+    {
+        if (method.IsStatic)
+        {
+            method.Invoke(null, null);
+        }
+        else
+        {
+            for (int i = 0; i < objects.Count; i++)
+            {
+                var value = method.Invoke(objects[i], null);
+                if (value != null)
+                    Debug.Log(string.Format("Return value for call to method {0} of object {1}: {2}", method.Name, objects[i], value));
+            }
+        }
     }
 
     #endregion
