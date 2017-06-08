@@ -41,7 +41,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         {
             get { return UnityObjects[0].GetInstanceID(); }
         }
-        public int ButtonsId { get { return Id*99999; } }
+        public int ButtonsId { get { return Id * 99999; } }
         public List<Object> UnityObjects { get; set; }
         public Type Type { get; set; }
         public SerializedObject Object { get; set; }
@@ -1298,22 +1298,24 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
     /// <returns></returns>
     private Action GetObjectToHight(DrawableProperty property)
     {
-        var isMultiple = !(property.UnityObjects == null || property.UnityObjects.Count == 0);
-
-        if (isMultiple && property.UnityObjects.Count > 1)
-            return null;
+        var isMultiple = (property.UnityObjects != null && property.UnityObjects.Count > 1);
 
         Object toHighlight = null;
         if (isMultiple)
-            toHighlight = property.Object.targetObjects[0];
+        {
+            return () => { Selection.objects = property.Object.targetObjects; };
+        }
         else
+        {
             toHighlight = property.Object.targetObject;
 
-        Component comp = toHighlight as Component;
-        if (comp != null)
-            toHighlight = comp.gameObject;
 
-        return () => EditorGUIUtility.PingObject(toHighlight);
+            Component comp = toHighlight as Component;
+            if (comp != null)
+                toHighlight = comp.gameObject;
+
+            return () => { EditorGUIUtility.PingObject(toHighlight); };
+        }
     }
 
     /// <summary>
@@ -1325,7 +1327,10 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         if (scriptRef == null)
             return null;
 
-        return () => AssetDatabase.OpenAsset(scriptRef.objectReferenceValue);
+        return () =>
+        {
+            AssetDatabase.OpenAsset(scriptRef.objectReferenceValue);
+        };
     }
 
     /// <summary>
@@ -1585,7 +1590,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         var toolTip = "Highlight object";
         if (onButtonClick == null)
         {
-            GUI.enabled = false;
+            //GUI.enabled = false;
             toolTip = "Can't highlight multiple objects";
         }
         _highlightGUIContent.tooltip = toolTip;
@@ -1700,7 +1705,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
             GUI.backgroundColor = Color.white;
         }
     }
-    
+
     #endregion
 
     #region Help
@@ -1712,25 +1717,26 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
     {
         var title = ("About Property Inspector v." + Version);
         var message = @"Use the search bar to filter a property.
-You can use the prefixed: “s:”, “e:”, “t:”.
+- You can use the prefixed: “s:”, “e:”, “t:”.
 “s:”: Starts with - will show only properties whose names starts with the text typed.
 “e:”: Ends with - will show only properties whose names ends with the text typed.
 “t:”: Type - will show only properties whose type match the text typed.
 None of those options are case sensitive.
-You can search using the path of the property you want to see.
+- You can search using the path of the property you want to see.
 For example: 'Player.HealthHandler.Life' would only show the property Life of HealthHandler of Player.  
 These options ARE case sensitive.
-Multi-edit group objects and components by type and lets you edit multiple objects as if they were one. 
-All changes made on this mode affect all object in the group.
-Inspector mode will show all properties of all object when there’s no search typed.
-Apply all/Revert all will apply or revert all changes made in objects that are instances of prefabs.
-Apply/Revert buttons in headers will apply or revert changes made in that object.
-Highlight button highlights the objects in the hierarchy or project.
-All changes made with Property Inspector can be undone (CTRL + Z | CMD + Z) - except apply/revert.
+- Multi-edit group objects and components by type and lets you edit multiple objects as if they were one. 
+- All changes made on this mode affect all object in the group.
+- Inspector mode will show all properties of all object when there’s no search typed.
+- Apply all/Revert all will apply or revert all changes made in objects that are instances of prefabs.
+- Apply/Revert buttons in headers will apply or revert changes made in that object.
+- Highlight button highlights the objects in the hierarchy or project.
+- All changes made with Property Inspector can be undone (CTRL + Z | CMD + Z) - except apply/revert.
 If you have any question, ran into bug or problem or have a suggestion
 please don’t hesitate in contating me at: temdisponivel@gmail.com.
 For more info, please see the pdf file inside PropertyInspector’s folder or visit: http://goo.gl/kyX3A3";
 
+        Application.OpenURL("http://goo.gl/kyX3A3");
         EditorUtility.DisplayDialog(title, message, "OK");
     }
 
