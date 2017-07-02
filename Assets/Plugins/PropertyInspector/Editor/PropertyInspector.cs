@@ -168,7 +168,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
                     textToLoad = "icons/d_UnityEditor.HierarchyWindow.png";
 
                 _highlightGuiContentCache = new GUIContent(EditorGUIUtility.Load(textToLoad) as Texture2D,
-                    "Highlight object");
+                    "Select object");
             }
             return _highlightGuiContentCache;
         }
@@ -418,8 +418,8 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
         var edit = EditorGUILayout.ToggleLeft(new GUIContent("Multi-edit", tooltip: "Edit multiple objects as one"), _multipleEdit, GUILayout.MaxWidth(70));
         var inspectorMode = EditorGUILayout.ToggleLeft(new GUIContent("Inspector mode", tooltip: "Show all properties when search query is empty (slow when viewing numerous objects without query)"), _inspectorMode, GUILayout.MaxWidth(105));
-        var customInspector = EditorGUILayout.ToggleLeft(new GUIContent("Custom Inspectors", tooltip: "Show objects and components using its custom (or default) inspectors"), _useCustomInspectors, GUILayout.MaxWidth(125));
-        var showMethodsAsButtons = EditorGUILayout.ToggleLeft(new GUIContent("Methods buttons", tooltip: "Show object's methods as buttons at the end of the inspector"), _showMethodAsButtons, GUILayout.MaxWidth(125));
+        var customInspector = EditorGUILayout.ToggleLeft(new GUIContent("Custom Inspec", tooltip: "Show objects and components using its custom (or default) inspectors"), _useCustomInspectors, GUILayout.MaxWidth(105));
+        var showMethodsAsButtons = EditorGUILayout.ToggleLeft(new GUIContent("Methods buttons", tooltip: "Show object's methods as buttons at the end of the inspector"), _showMethodAsButtons, GUILayout.MaxWidth(110));
 
         GUILayout.FlexibleSpace();
 
@@ -1298,24 +1298,25 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
     /// <returns></returns>
     private Action GetObjectToHight(DrawableProperty property)
     {
-        var isMultiple = (property.UnityObjects != null && property.UnityObjects.Count > 1);
+        var isMultiple = !(property.UnityObjects == null || property.UnityObjects.Count == 0);
+
+        //if (isMultiple && property.UnityObjects.Count > 1)
+        //   return null;
 
         Object toHighlight = null;
         if (isMultiple)
-        {
-            return () => { Selection.objects = property.Object.targetObjects; };
-        }
+            toHighlight = property.Object.targetObjects[0];
         else
-        {
             toHighlight = property.Object.targetObject;
 
+        Component comp = toHighlight as Component;
+        if (comp != null)
+            toHighlight = comp.gameObject;
 
-            Component comp = toHighlight as Component;
-            if (comp != null)
-                toHighlight = comp.gameObject;
-
-            return () => { EditorGUIUtility.PingObject(toHighlight); };
-        }
+        return () =>
+        {
+            Selection.objects = property.Object.targetObjects;
+        };//(toHighlight);
     }
 
     /// <summary>
@@ -1587,11 +1588,11 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
         #region Highlight object
 
-        var toolTip = "Highlight object";
+        var toolTip = "Select object";
         if (onButtonClick == null)
         {
             //GUI.enabled = false;
-            toolTip = "Can't highlight multiple objects";
+            toolTip = "Select multiple objects";
         }
         _highlightGUIContent.tooltip = toolTip;
         if (!GUILayout.Toggle(true, _highlightGUIContent, "dragtab", GUILayout.Width(25)))
@@ -1717,26 +1718,25 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
     {
         var title = ("About Property Inspector v." + Version);
         var message = @"Use the search bar to filter a property.
-- You can use the prefixed: “s:”, “e:”, “t:”.
+You can use the prefixed: “s:”, “e:”, “t:”.
 “s:”: Starts with - will show only properties whose names starts with the text typed.
 “e:”: Ends with - will show only properties whose names ends with the text typed.
 “t:”: Type - will show only properties whose type match the text typed.
 None of those options are case sensitive.
-- You can search using the path of the property you want to see.
+You can search using the path of the property you want to see.
 For example: 'Player.HealthHandler.Life' would only show the property Life of HealthHandler of Player.  
 These options ARE case sensitive.
-- Multi-edit group objects and components by type and lets you edit multiple objects as if they were one. 
-- All changes made on this mode affect all object in the group.
-- Inspector mode will show all properties of all object when there’s no search typed.
-- Apply all/Revert all will apply or revert all changes made in objects that are instances of prefabs.
-- Apply/Revert buttons in headers will apply or revert changes made in that object.
-- Highlight button highlights the objects in the hierarchy or project.
-- All changes made with Property Inspector can be undone (CTRL + Z | CMD + Z) - except apply/revert.
+Multi-edit group objects and components by type and lets you edit multiple objects as if they were one. 
+All changes made on this mode affect all object in the group.
+Inspector mode will show all properties of all object when there’s no search typed.
+Apply all/Revert all will apply or revert all changes made in objects that are instances of prefabs.
+Apply/Revert buttons in headers will apply or revert changes made in that object.
+Highlight button highlights the objects in the hierarchy or project.
+All changes made with Property Inspector can be undone (CTRL + Z | CMD + Z) - except apply/revert.
 If you have any question, ran into bug or problem or have a suggestion
 please don’t hesitate in contating me at: temdisponivel@gmail.com.
 For more info, please see the pdf file inside PropertyInspector’s folder or visit: http://goo.gl/kyX3A3";
 
-        Application.OpenURL("http://goo.gl/kyX3A3");
         EditorUtility.DisplayDialog(title, message, "OK");
     }
 
