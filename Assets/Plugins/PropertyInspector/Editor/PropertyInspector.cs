@@ -99,7 +99,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
     private const string _multiEditHeaderFormat = "{0} ({1})";
 
-    private readonly Version Version = new Version(1, 0, 0, 0);
+    private readonly Version Version = new Version(1, 0, 0, 3);
 
     private string _currentSearchedAsLower
     {
@@ -280,7 +280,6 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
     }
 
     #endregion
-
 
     /// <summary>
     /// Update objects that are locked.
@@ -712,7 +711,10 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         {
             foreach (var serializedProperty in property.PropertiesPaths)
             {
-                EditorGUILayout.PropertyField(serializedObjectChild.FindProperty(serializedProperty), true);
+                var child = serializedObjectChild.FindProperty(serializedProperty);
+                if (child == null)
+                    continue;
+                EditorGUILayout.PropertyField(child, true);
             }
         }
 
@@ -1003,13 +1005,11 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
     private void FilterProperties(DrawableProperty father, DrawableProperty child, SerializedObject serializedObject, SerializedProperty iterator, string search, bool isPath)
     {
         bool add = false;
-        bool stepInto = true;
 
-        // Get the next property on this level (never go deeper inside a property)
-        while (iterator.NextVisible(stepInto))
+        // Get the next property on this level
+        iterator.Reset();
+        while (iterator.NextVisible(true))
         {
-            stepInto = false;
-
             // if this drawable already have this property saved
             if (child.PropertiesPaths.Contains(iterator.propertyPath))
                 continue;
@@ -1122,6 +1122,12 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
             foreach (var propertiesPath in property.PropertiesPaths)
             {
                 var currentProperty = property.Object.FindProperty(propertiesPath);
+
+                // this current property is null when the path points
+                // to a index on a array (say 2) and we are editing multiple object
+                // if one of the objects doesn't have a index 2 in its array, the property will not be found
+                if (currentProperty == null)
+                    continue;
 
                 if (currentProperty.isInstantiatedPrefab && currentProperty.prefabOverride)
                 {
@@ -1255,6 +1261,13 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
         searchAsLow = searchAsLow.Trim();
 
+        if (toCompare.StartsWith("m"))
+            toCompare = toCompare.Remove(0, 1);
+        else if (toCompare.StartsWith("m_"))
+            toCompare = toCompare.Remove(0, 2);
+        else if (toCompare.StartsWith("_"))
+            toCompare = toCompare.Remove(0, 1);
+
         string[] parts = new[] { searchAsLow };
         if (searchAsLow.Contains(' '))
         {
@@ -1264,23 +1277,40 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         bool contains = true;
         for (int i = 0; i < parts.Length; i++)
         {
-            switch (SearchPatternToUse)
+            var part = parts[i];
+            if (string.IsNullOrEmpty(part))
+                contains = false;
+            else
             {
-                case SearchPattern.StartsWith:
-                    contains &= toCompare.StartsWith(parts[i], StringComparison.OrdinalIgnoreCase);
-                    break;
-                case SearchPattern.EndsWith:
-                    contains &= toCompare.EndsWith(parts[i], StringComparison.OrdinalIgnoreCase);
-                    break;
-                case SearchPattern.Match:
-                    contains &= toCompare.Equals(parts[i], StringComparison.OrdinalIgnoreCase);
-                    break;
-                case SearchPattern.Type:
-                    contains &= property.type.Equals(parts[i], StringComparison.OrdinalIgnoreCase);
-                    break;
-                case SearchPattern.Contains:
-                    contains &= toCompare.Contains(parts[i]);
-                    break;
+                switch (SearchPatternToUse)
+                {
+                    case SearchPattern.StartsWith:
+                        contains &= toCompare.StartsWith(part, StringComparison.OrdinalIgnoreCase);
+                        break;
+                    case SearchPattern.EndsWith:
+                        contains &= toCompare.EndsWith(part, StringComparison.OrdinalIgnoreCase);
+                        break;
+                    case SearchPattern.Match:
+                        contains &= toCompare.Equals(part, StringComparison.OrdinalIgnoreCase);
+                        break;
+                    case SearchPattern.Type:
+                    {
+                        string typeName = property.type;
+                        switch (property.propertyType)
+                        {
+                            case SerializedPropertyType.ObjectReference:
+                                if (property.objectReferenceValue != null)
+                                    typeName = property.objectReferenceValue.GetType().Name;
+                                break;
+                        }
+
+                        contains &= typeName.Equals(part, StringComparison.OrdinalIgnoreCase);
+                    }
+                        break;
+                    case SearchPattern.Contains:
+                        contains &= toCompare.Contains(part);
+                        break;
+                }
             }
         }
 
