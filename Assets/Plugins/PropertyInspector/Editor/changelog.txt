@@ -1,0 +1,15 @@
+Property Inspector changelog.
+
+Version 1.0.4:
+Added a new search pattern! Now you can filter properties by their value. Please see the documentation or help popup for more info.
+Fixed searchs that started with "m";
+Now filtered booleans have their check box drawn to their left for better visualization;
+Minor bug fixes on the path search;
+
+Version 1.0.3:
+Fixed the nested property search;
+Refined the search of properties that starts with known prefixes like "_", "mm", "_";
+
+Other fixes:
+- Improved the search using the type pattern;
+- Fixed null reference when multi-editing arrays of different sizes;
