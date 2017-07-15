@@ -4,6 +4,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using UnityEditor;
 using Object = UnityEngine.Object;
 using Random = System.Random;
@@ -23,6 +24,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         Contains,
         Match,
         Type,
+        Value,
     }
 
     /// <summary>
@@ -134,6 +136,8 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
                 return SearchPattern.Match;
             else if (_currentSearchedQuery.StartsWith("t:", StringComparison.OrdinalIgnoreCase))
                 return SearchPattern.Type;
+            else if (_currentSearchedQuery.StartsWith("v:", StringComparison.OrdinalIgnoreCase))
+                return SearchPattern.Value;
             else
                 return SearchPattern.Contains;
         }
@@ -280,27 +284,6 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
     }
 
     #endregion
-
-    /// <summary>
-    /// Update objects that are locked.
-    /// This is necessary because when lock mode is on
-    /// a object can be destroy while we are still holding it,
-    /// so we remove from our list objects that have been destroyed.
-    /// </summary>
-    private void UpdateLockedObject()
-    {
-        if (_lockedObjects == null)
-            _lockedObjects = new Object[0];
-
-        var objects = _lockedObjects.ToList();
-        for (int i = objects.Count - 1; i >= 0; i--)
-        {
-            if (objects[i] == null || !objects[i])
-                objects.RemoveAt(i);
-        }
-
-        _lockedObjects = objects.ToArray();
-    }
 
     #region Init
 
@@ -714,7 +697,15 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
                 var child = serializedObjectChild.FindProperty(serializedProperty);
                 if (child == null)
                     continue;
-                EditorGUILayout.PropertyField(child, true);
+                switch (child.propertyType)
+                {
+                    case SerializedPropertyType.Boolean:
+                        child.boolValue = EditorGUILayout.ToggleLeft(child.displayName, child.boolValue);
+                        break;
+                    default:
+                        EditorGUILayout.PropertyField(child, true);
+                        break;
+                }
             }
         }
 
@@ -1251,7 +1242,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
         string toCompare = property.name;
         if (isPath)
-            toCompare = property.propertyPath;
+            return property.FindPropertyRelative(property.propertyPath) != null;
 
         var searchPattern = SearchPatternToUse;
 
@@ -1261,9 +1252,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
         searchAsLow = searchAsLow.Trim();
 
-        if (toCompare.StartsWith("m"))
-            toCompare = toCompare.Remove(0, 1);
-        else if (toCompare.StartsWith("m_"))
+        if (toCompare.StartsWith("m_"))
             toCompare = toCompare.Remove(0, 2);
         else if (toCompare.StartsWith("_"))
             toCompare = toCompare.Remove(0, 1);
@@ -1294,27 +1283,108 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
                         contains &= toCompare.Equals(part, StringComparison.OrdinalIgnoreCase);
                         break;
                     case SearchPattern.Type:
-                    {
-                        string typeName = property.type;
-                        switch (property.propertyType)
                         {
-                            case SerializedPropertyType.ObjectReference:
-                                if (property.objectReferenceValue != null)
-                                    typeName = property.objectReferenceValue.GetType().Name;
-                                break;
-                        }
+                            string typeName = property.type;
+                            switch (property.propertyType)
+                            {
+                                case SerializedPropertyType.ObjectReference:
+                                    if (property.objectReferenceValue != null)
+                                        typeName = property.objectReferenceValue.GetType().Name;
+                                    break;
+                            }
 
-                        contains &= typeName.Equals(part, StringComparison.OrdinalIgnoreCase);
-                    }
+                            contains &= typeName.Equals(part, StringComparison.OrdinalIgnoreCase);
+                        }
                         break;
                     case SearchPattern.Contains:
                         contains &= toCompare.Contains(part);
+                        break;
+                    case SearchPattern.Value:
+                        contains &= CompareValue(property, part);
                         break;
                 }
             }
         }
 
         return contains;
+    }
+    /// <summary>
+    /// Compared the property's value to toCompare parameter.
+    /// Returns true if the property's value constains toCompare.
+    /// </summary>
+    private bool CompareValue(SerializedProperty property, string toCompare)
+    {
+        string stringValue = string.Empty;
+        switch (property.propertyType)
+        {
+            // Parse the types we know how to parse
+            case SerializedPropertyType.Integer:
+                int toCompareInt;
+                if (int.TryParse(toCompare, out toCompareInt))
+                {
+                    if (property.intValue == toCompareInt)
+                        return true;
+                }
+                break;
+            case SerializedPropertyType.Boolean:
+                bool toCompareBool;
+                if (bool.TryParse(toCompare, out toCompareBool))
+                    return toCompareBool == property.boolValue;
+                break;
+            case SerializedPropertyType.Float:
+                float toCompareFloat;
+                if (float.TryParse(toCompare, out toCompareFloat))
+                {
+                    if (Mathf.Abs(property.floatValue - toCompareFloat) < float.Epsilon)
+                        return true;
+                }
+                break;
+
+            // Types that doesn't have explicit values
+            case SerializedPropertyType.Generic:
+            case SerializedPropertyType.LayerMask:
+            case SerializedPropertyType.Enum:
+            case SerializedPropertyType.Character:
+            case SerializedPropertyType.Gradient:
+            case SerializedPropertyType.Quaternion:
+                return false;
+
+            // Types that have explicit values
+            case SerializedPropertyType.String:
+                stringValue = property.stringValue;
+                break;
+            case SerializedPropertyType.Color:
+                stringValue = property.colorValue.ToString();
+                break;
+            case SerializedPropertyType.ObjectReference:
+                if (property.objectReferenceValue != null)
+                    stringValue = property.objectReferenceValue.ToString();
+                break;
+            case SerializedPropertyType.Vector2:
+                stringValue = property.vector2Value.ToString();
+                break;
+            case SerializedPropertyType.Vector3:
+                stringValue = property.vector3Value.ToString();
+                break;
+            case SerializedPropertyType.Vector4:
+                stringValue = property.vector4Value.ToString();
+                break;
+            case SerializedPropertyType.Rect:
+                stringValue = property.rectValue.ToString();
+                break;
+            case SerializedPropertyType.ArraySize:
+                if (property.isArray)
+                    stringValue = property.arraySize.ToString();
+                break;
+            case SerializedPropertyType.AnimationCurve:
+                stringValue = property.animationCurveValue.ToString();
+                break;
+            case SerializedPropertyType.Bounds:
+                stringValue = property.boundsValue.ToString();
+                break;
+        }
+
+        return stringValue.ToLower().Trim().Contains(toCompare);
     }
 
     #endregion
@@ -1800,6 +1870,27 @@ For more info, please see the pdf file inside PropertyInspector’s folder or vi
                     Debug.Log(string.Format("Return value for call to method {0} of object {1}: {2}", method.Name, objects[i], value));
             }
         }
+    }
+
+    /// <summary>
+    /// Update objects that are locked.
+    /// This is necessary because when lock mode is on
+    /// a object can be destroy while we are still holding it,
+    /// so we remove from our list objects that have been destroyed.
+    /// </summary>
+    private void UpdateLockedObject()
+    {
+        if (_lockedObjects == null)
+            _lockedObjects = new Object[0];
+
+        var objects = _lockedObjects.ToList();
+        for (int i = objects.Count - 1; i >= 0; i--)
+        {
+            if (objects[i] == null || !objects[i])
+                objects.RemoveAt(i);
+        }
+
+        _lockedObjects = objects.ToArray();
     }
 
     #endregion
