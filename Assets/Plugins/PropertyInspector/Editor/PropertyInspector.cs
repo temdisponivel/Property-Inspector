@@ -25,6 +25,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         Match,
         Type,
         Value,
+        Component,
     }
 
     /// <summary>
@@ -37,6 +38,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
             UnityObjects = new List<Object>();
             Childs = new List<DrawableProperty>();
             PropertiesPaths = new HashSet<string>();
+            ShouldBeDraw = true;
         }
 
         public int Id
@@ -51,6 +53,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         public List<DrawableProperty> Childs { get; set; }
         public bool HasAppliableChanges { get; set; }
         public Editor CustomEditor { get; set; }
+        public bool ShouldBeDraw { get; set; }
 
         public bool HasDestroyedObject()
         {
@@ -138,6 +141,8 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
                 return SearchPattern.Type;
             else if (_currentSearchedQuery.StartsWith("v:", StringComparison.OrdinalIgnoreCase))
                 return SearchPattern.Value;
+            else if (_currentSearchedQuery.StartsWith("c:", StringComparison.OrdinalIgnoreCase))
+                return SearchPattern.Component;
             else
                 return SearchPattern.Contains;
         }
@@ -535,7 +540,8 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         }
 
         EditorGUILayout.BeginVertical();
-        _scrollPosition = EditorGUILayout.BeginScrollView(_scrollPosition, GUILayout.Width(position.width), GUILayout.Height(position.height - 100));
+        _scrollPosition = EditorGUILayout.BeginScrollView(_scrollPosition, GUILayout.Width(position.width),
+            GUILayout.Height(position.height - 100));
 
         if (_expandAll)
             ExpandAll();
@@ -548,34 +554,44 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         {
             var current = _drawable[i];
 
-            if (DrawObjectHeader(current, false))
+            if (current.ShouldBeDraw)
             {
-                BeginContents();
+                if (DrawObjectHeader(current, false))
                 {
+                    BeginContents();
                     DrawObject(current);
-
-                    // do basically the same we just did but for every child of this object
-                    for (int j = 0; j < current.Childs.Count; j++)
-                    {
-                        var currentChild = current.Childs[j];
-
-                        if (DrawObjectHeader(currentChild, true))
-                        {
-                            BeginContents();
-
-                            DrawObject(currentChild);
-
-                            DrawMethodButtons(currentChild);
-
-                            EndContents();
-
-                            if (ShouldSkipDrawing())
-                                break;
-                        }
-                    }
-
-                    DrawMethodButtons(current);
                 }
+                else
+                    continue;
+            }
+
+            // do basically the same we just did but for every child of this object
+            for (int j = 0; j < current.Childs.Count; j++)
+            {
+                var currentChild = current.Childs[j];
+
+                if (currentChild.ShouldBeDraw)
+                {
+                    if (DrawObjectHeader(currentChild, true))
+                    {
+                        BeginContents();
+
+                        DrawObject(currentChild);
+
+                        DrawMethodButtons(currentChild);
+
+                        EndContents();
+
+                        if (ShouldSkipDrawing())
+                            break;
+                    }
+                }
+            }
+
+            if (current.ShouldBeDraw)
+            {
+                DrawMethodButtons(current);
+
                 EndContents();
 
                 if (ShouldSkipDrawing())
@@ -835,6 +851,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
             // After creating a SerializedObject for current object, filter its properties
             // the last parameter tells the method to not actually filter, but rather just create a drawable property for us
             var drawable = FilterObject(null, currentObject, searchAsLow, isPath, false);
+            drawable.ShouldBeDraw = false;
 
             // if we are not in editor mode and the search is empty, add the object
             // we do this because we want to show what objects are seleted when there's no search
@@ -862,6 +879,13 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
                 for (int j = 0; j < components.Length; j++)
                 {
+                    if (SearchPatternToUse == SearchPattern.Component)
+                    {
+                        var comp = components[i];
+                        if (!comp.GetType().Name.Equals(searchAsLow, StringComparison.InvariantCultureIgnoreCase))
+                            continue;
+                    }
+
                     // if it's not a Transform - this is necessary because - for some reason - Unity doesn't like to use PropertyField with transforms
                     // Filter and add the resulting drawable property as child of the game object drawable property
                     FilterObject(drawable, components[j], searchAsLow, isPath);
@@ -875,6 +899,8 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         }
 
         _searching = false;
+        if (_useCustomInspectors)
+            CreateEditorForAll();
 
         EditorUtility.ClearProgressBar();
     }
@@ -902,6 +928,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
             var iterator = serializedObject.GetIterator();
 
             var drawable = FilterObject(null, currentObject, searchAsLow, isPath, false);
+            drawable.ShouldBeDraw = false;
 
             bool ignorePaths = false;
             if (!string.IsNullOrEmpty(_currentSearchedQuery) || _inspectorMode)
@@ -931,6 +958,13 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
                 for (int j = 0; j < components.Length; j++)
                 {
+                    if (SearchPatternToUse == SearchPattern.Component)
+                    {
+                        var comp = components[i];
+                        if (!comp.GetType().Name.Equals(searchAsLow, StringComparison.InvariantCultureIgnoreCase))
+                            continue;
+                    }
+
                     var drawableChild = FilterObject(drawable, components[j], searchAsLow, isPath);
                     AddObjectsAndProperties(drawables, drawableChild, components[j]);
                 }
@@ -940,6 +974,8 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         PopuplateDrawablesFromDictionary(drawables);
 
         _searching = false;
+        if (_useCustomInspectors)
+            CreateEditorForAll();   
 
         EditorUtility.ClearProgressBar();
     }
@@ -1293,7 +1329,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
                                     break;
                             }
 
-                            contains &= typeName.Equals(part, StringComparison.OrdinalIgnoreCase);
+                            contains &= typeName.Equals(part, StringComparison.InvariantCultureIgnoreCase);
                         }
                         break;
                     case SearchPattern.Contains:
@@ -1570,7 +1606,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
     static public void BeginContents()
     {
         GUILayout.BeginHorizontal();
-        EditorGUILayout.BeginHorizontal("AS TextArea", GUILayout.MinHeight(10f));
+        EditorGUILayout.BeginHorizontal("TextArea", GUILayout.MinHeight(10f));
         GUILayout.BeginVertical();
 
         GUILayout.Space(2f);
