@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
+using Object = UnityEngine.Object;
 
 namespace Assets.Plugins.PropertyInspector.Editor
 {
@@ -13,6 +14,7 @@ namespace Assets.Plugins.PropertyInspector.Editor
     public enum FilterType
     {
         None,
+        Contains,
         StartsWith,
         EndsWith,
         Match,
@@ -95,6 +97,8 @@ For more info, please see the pdf file inside PropertyInspector’s folder or vi
     public class FilterConfig
     {
         public string FilterText;
+        public string FilterTextLower;
+        public string FullFilterText;
         public FilterType FilterType;
 
         public bool MultiEdit;
@@ -110,29 +114,12 @@ For more info, please see the pdf file inside PropertyInspector’s folder or vi
     public class DrawableObject
     {
         public string ObjectIdentifier;
-        public UnityEngine.Object[] Objects;
-        public List<DrawableProperty> FilteredProperties;
+        public Type ObjectType;
+        public UnityEditor.Editor Editor;
 
-        public List<DrawableComponent> Components;
-    }
-
-    /// <summary>
-    /// Defined a component (something attached to a object)
-    /// to be draw.
-    /// </summary>
-    public class DrawableComponent
-    {
-        public Component Component;
-        public CustomEditor CustomEditor;
-        public List<DrawableProperty> FilteredProperties;
-    }
-
-    /// <summary>
-    /// Defines a propery to be draw.
-    /// </summary>
-    public class DrawableProperty
-    {
-        public SerializedProperty SerializedProperty;
+        public SerializedObject SerializedObject;
+        public List<UnityEngine.Object> Objects;
+        public List<SerializedProperty> FilteredProperties;
     }
 
     /// <summary>
@@ -152,7 +139,6 @@ For more info, please see the pdf file inside PropertyInspector’s folder or vi
         public float NextSearchTime;
 
         public List<DrawableObject> CurrentObjects;
-        public List<DrawableComponent> CurrentComponents;
 
         public FrameState LastFrameState;
         public FrameState CurrentFrameState;
@@ -173,6 +159,8 @@ For more info, please see the pdf file inside PropertyInspector’s folder or vi
         public bool ShowHelp;
 
         public bool ChangedToggles;
+
+        public Vector2 ScrollPosition;
     }
 
     /// <summary>
@@ -227,9 +215,14 @@ For more info, please see the pdf file inside PropertyInspector’s folder or vi
             if (PropertyUtil.ShouldRefilter(WindowState))
                 PropertyUtil.Filter(WindowState);
 
-            EditorUtil.DrawObjectsAndComponents(WindowState);
+            EditorUtil.DrawObjects(WindowState);
 
             WindowState.LastFrameState = WindowState.CurrentFrameState;
+        }
+
+        void OnDestroy()
+        {
+            EditorUtil.SaveConfigsFromFilterConfigIntoPrefs(WindowState.Config);
         }
 
         public void OnSelectionChange()
@@ -259,9 +252,9 @@ For more info, please see the pdf file inside PropertyInspector’s folder or vi
 
             windowState.Contents = CreateDefaultEditorContent();
             windowState.Config = CreateDefaultFilterConfig();
+            LoadConfigsFromPrefsIntoFilterConfig(windowState.Config);
             windowState.LockSelection = false;
             windowState.NextSearchTime = -1;
-            windowState.CurrentComponents = new List<DrawableComponent>();
             windowState.CurrentObjects = new List<DrawableObject>();
             windowState.CurrentFrameState = new FrameState();
             windowState.LastFrameState = new FrameState();
@@ -414,21 +407,25 @@ For more info, please see the pdf file inside PropertyInspector’s folder or vi
         {
             GUI.SetNextControlName(Constants.SearchInputControlName);
 
-            var search = EditorGUILayout.TextField(window.Config.FilterText, (GUIStyle)"ToolbarSeachTextField", GUILayout.Width(window.Window.position.width - 25));
+            var search = EditorGUILayout.TextField(window.Config.FullFilterText, (GUIStyle)"ToolbarSeachTextField", GUILayout.Width(window.Window.position.width - 25));
 
             if (search != window.Config.FilterText)
             {
                 window.NextSearchTime = (float)EditorApplication.timeSinceStartup + .2f;
+                window.Config.FullFilterText = search;
                 window.Config.FilterText = search;
+                window.Config.FilterTextLower = search.ToLower();
             }
 
             var style = "ToolbarSeachCancelButtonEmpty";
-            if (!string.IsNullOrEmpty(window.Config.FilterText))
+            if (!string.IsNullOrEmpty(window.Config.FullFilterText))
                 style = "ToolbarSeachCancelButton";
 
             if (GUILayout.Button(GUIContent.none, style))
             {
                 window.Config.FilterText = string.Empty;
+                window.Config.FullFilterText = string.Empty;
+                window.Config.FilterTextLower = string.Empty;
                 GUIUtility.keyboardControl = 0;
             }
         }
@@ -498,28 +495,109 @@ For more info, please see the pdf file inside PropertyInspector’s folder or vi
             window.CurrentFrameState.CollapseAll = GUILayout.Button(window.Contents.CollapseAllButton, "miniButtonRight");
         }
 
-        public static void DrawObjectsAndComponents(WindowState window)
+        public static void DrawObjects(WindowState window)
         {
-            for (int i = 0; i < window.Selection.Length; i++)
+            EditorGUILayout.BeginVertical();
+
+            var w = window.Window.position.width;
+            var h = window.Window.position.height;
+            window.CurrentFrameState.ScrollPosition = EditorGUILayout.BeginScrollView(window.LastFrameState.ScrollPosition, GUILayout.Width(w), GUILayout.Height(h - 100));
+
+            var objects = window.CurrentObjects;
+            for (int i = 0; i < objects.Count; i++)
             {
-                var current = window.Selection[i];
-                var editor = UnityEditor.Editor.CreateEditor(current);
-                editor.DrawHeader();
-                editor.DrawDefaultInspector();
-                var comps = (current as GameObject).GetComponents<Component>();
-                for (int j = 0; j < comps.Length; j++)
+                var obj = objects[i];
+                bool expanded = DrawObjectHeader(obj);
+
+                if (expanded)
                 {
-                    var comp = comps[j];
-                    var compEditor = UnityEditor.Editor.CreateEditor(comp);
-                    compEditor.DrawHeader();
-                    compEditor.DrawDefaultInspector();
+                    BeginContents();
+                    if (window.Config.FilterType == FilterType.None || window.Config.FilterType == FilterType.Component)
+                    {
+                        if (window.Config.UseCustomInspector)
+                        {
+                            var previousWidth = EditorGUIUtility.labelWidth;
+                            EditorGUIUtility.labelWidth = 200;
+
+                            obj.Editor.OnInspectorGUI();
+
+                            EditorGUIUtility.labelWidth = previousWidth;
+                        }
+                        else
+                            obj.Editor.DrawDefaultInspector();
+                    }
+                    else
+                    {
+                        for (int j = 0; j < obj.FilteredProperties.Count; j++)
+                        {
+                            var property = obj.FilteredProperties[j];
+
+                            // just to make bools be draw with toggle to the left of the name
+                            if (property.propertyType == SerializedPropertyType.Boolean)
+                                property.boolValue = EditorGUILayout.ToggleLeft(property.displayName, property.boolValue);
+                            else
+                                EditorGUILayout.PropertyField(property, true);
+                        }
+                    }
+                    EndContents();
                 }
+
+                DrawObjectFoot(obj);
             }
+
+            EditorGUILayout.EndScrollView();
+            EditorGUILayout.EndVertical();
         }
 
         public static void ShowHelpPopup()
         {
             EditorUtility.DisplayDialog(Constants.HelpTitle, Constants.HelpMessage, "Ok");
+        }
+
+        public static bool DrawObjectHeader(DrawableObject drawable)
+        {
+            var state = PropertyUtil.GetObjectHeaderState(drawable);
+            var text = string.Format("<b><size=11>{0}</size></b>", drawable.ObjectIdentifier);
+            if (state)
+                text = "\u25BC " + text;
+            else
+                text = "\u25BA " + text;
+
+            var changed = !GUILayout.Toggle(true, text, "dragtab", GUILayout.MinWidth(20f), GUILayout.ExpandWidth(true));
+            if (changed)
+            {
+                state = !state;
+                PropertyUtil.SetObjectHeaderState(drawable, state);
+            }
+
+            return state;
+        }
+
+        public static void DrawObjectFoot(DrawableObject drawable)
+        {
+            GUILayout.Space(3);
+        }
+
+        public static void BeginContents()
+        {
+            GUILayout.BeginHorizontal();
+            EditorGUILayout.BeginHorizontal("textarea", GUILayout.MinHeight(10f));
+            GUILayout.BeginVertical();
+
+            GUILayout.Space(2f);
+        }
+
+        public static void EndContents()
+        {
+            GUILayout.Space(3f);
+
+            GUILayout.EndVertical();
+            EditorGUILayout.EndHorizontal();
+
+            GUILayout.Space(3f);
+            GUILayout.EndHorizontal();
+
+            GUILayout.Space(3f);
         }
     }
 
@@ -559,18 +637,31 @@ For more info, please see the pdf file inside PropertyInspector’s folder or vi
             var text = config.FilterText;
 
             FilterType filterType = FilterType.None;
-            if (text.StartsWith(Constants.StartsWithPrefix))
-                filterType = FilterType.StartsWith;
-            else if (text.StartsWith(Constants.StartsWithPrefix))
-                filterType = FilterType.EndsWith;
-            else if (text.StartsWith(Constants.EndsWithPrefix))
-                filterType = FilterType.Match;
-            else if (text.StartsWith(Constants.MatchPrefix))
-                filterType = FilterType.Type;
-            else if (text.StartsWith(Constants.TypePrefix))
-                filterType = FilterType.Value;
-            else if (text.StartsWith(Constants.ComponentPrefix))
-                filterType = FilterType.Component;
+
+            if (!string.IsNullOrEmpty(text))
+            {
+                filterType = FilterType.Contains;
+
+                if (text.StartsWith(Constants.StartsWithPrefix))
+                    filterType = FilterType.StartsWith;
+                else if (text.StartsWith(Constants.StartsWithPrefix))
+                    filterType = FilterType.EndsWith;
+                else if (text.StartsWith(Constants.EndsWithPrefix))
+                    filterType = FilterType.Match;
+                else if (text.StartsWith(Constants.MatchPrefix))
+                    filterType = FilterType.Type;
+                else if (text.StartsWith(Constants.TypePrefix))
+                    filterType = FilterType.Value;
+                else if (text.StartsWith(Constants.ComponentPrefix))
+                    filterType = FilterType.Component;
+
+                // if the search text has a prefix
+                if (filterType != FilterType.Contains)
+                {
+                    state.Config.FilterText = state.Config.FilterText.Remove(0, 2);
+                    state.Config.FilterTextLower = state.Config.FilterText.ToLower();
+                }
+            }
 
             config.FilterType = filterType;
 
@@ -595,12 +686,171 @@ For more info, please see the pdf file inside PropertyInspector’s folder or vi
 
         public static void Filter(WindowState state)
         {
+            ClearObjects(state);
 
+            var objects = state.Selection;
+            for (int i = 0; i < objects.Length; i++)
+            {
+                var obj = objects[i];
+                if (obj is GameObject)
+                {
+                    var go = obj as GameObject;
+                    var components = go.GetComponents<Component>();
+                    for (int j = 0; j < components.Length; j++)
+                    {
+                        var comp = components[j];
+                        if (IsObjectFit(state, comp))
+                            CreateOrUpdateDrawableObject(state, comp);
+                    }
+                }
+                else
+                {
+                    if (IsObjectFit(state, obj))
+                        CreateOrUpdateDrawableObject(state, obj);
+                }
+            }
+
+            for (int i = 0; i < state.CurrentObjects.Count; i++)
+            {
+                var drawable = state.CurrentObjects[i];
+                FillDrawableProperties(state, drawable);
+            }
         }
 
-        public static void ClearObjectsAndComponents(WindowState state)
+        private static bool IsObjectFit(WindowState state, UnityEngine.Object obj)
         {
-            state.CurrentComponents.Clear();
+            switch (state.Config.FilterType)
+            {
+                case FilterType.None:
+                case FilterType.Contains:
+                case FilterType.StartsWith:
+                case FilterType.EndsWith:
+                case FilterType.Match:
+                case FilterType.Type:
+                case FilterType.Value:
+                    return true;
+                case FilterType.Component:
+                    return obj.GetType().Name.Equals(state.Config.FilterText, StringComparison.InvariantCultureIgnoreCase);
+            }
+
+            return false;
+        }
+
+        private static void CreateOrUpdateDrawableObject(WindowState state, UnityEngine.Object obj)
+        {
+            var objType = obj.GetType();
+            var drawables = state.CurrentObjects;
+            for (int i = 0; i < drawables.Count; i++)
+            {
+                var drawable = drawables[i];
+                if (objType == drawable.ObjectType)
+                {
+                    drawable.Objects.Add(obj);
+                    return;
+                }
+            }
+
+            var newDrawable = new DrawableObject();
+            newDrawable.Objects = new List<Object>();
+            newDrawable.Objects.Add(obj);
+            newDrawable.FilteredProperties = new List<SerializedProperty>();
+            newDrawable.ObjectIdentifier = objType.Name;
+            newDrawable.ObjectType = objType;
+
+            state.CurrentObjects.Add(newDrawable);
+        }
+
+        private static void FillDrawableProperties(WindowState state, DrawableObject drawable)
+        {
+            var objs = drawable.Objects.ToArray();
+            drawable.SerializedObject = new SerializedObject(objs);
+            drawable.Editor = UnityEditor.Editor.CreateEditor(objs);
+            
+            // if there's no filter, just draw the editor, no need to filter properties
+            if (state.Config.FilterType == FilterType.None)
+                return;
+
+            var property = drawable.SerializedObject.GetIterator();
+
+            if (property.NextVisible(true))
+            {
+                do
+                {
+                    if (IsPropertyFit(state, property))
+                        drawable.FilteredProperties.Add(property.Copy());
+                } while (property.NextVisible(false));
+            }
+
+            property.Reset();
+        }
+
+        private static bool IsPropertyFit(WindowState state, SerializedProperty property)
+        {
+            var config = state.Config;
+            var filterText = config.FilterTextLower;
+            var filterTextParts = filterText.Split(' ');
+
+            var propertyNames = new string[2];
+            propertyNames[0] = property.displayName.ToLower();
+            propertyNames[1] = property.name.ToLower();
+
+            switch (config.FilterType)
+            {
+                case FilterType.Contains:
+                    for (int i = 0; i < propertyNames.Length; i++)
+                    {
+                        var propertyName = propertyNames[i];
+                        for (int j = 0; j < filterTextParts.Length; j++)
+                        {
+                            var part = filterTextParts[j];
+                            if (propertyName.Contains(part))
+                                return true;
+                        }
+                    }
+                    break;
+                case FilterType.StartsWith:
+                    for (int i = 0; i < propertyNames.Length; i++)
+                    {
+                        var propertyName = propertyNames[i];
+                        if (propertyName.StartsWith(filterText))
+                            return true;
+                    }
+                    break;
+                case FilterType.EndsWith:
+                    for (int i = 0; i < propertyNames.Length; i++)
+                    {
+                        var propertyName = propertyNames[i];
+                        if (propertyName.EndsWith(filterText))
+                            return true;
+                    }
+                    break;
+                case FilterType.Match:
+                    for (int i = 0; i < propertyNames.Length; i++)
+                    {
+                        var propertyName = propertyNames[i];
+                        if (propertyName.Equals(filterText))
+                            return true;
+                    }
+                    break;
+                case FilterType.Type:
+                    return property.type.Equals(filterText, StringComparison.InvariantCultureIgnoreCase);
+                case FilterType.Value:
+                    var value = GetValueString(property);
+                    if (string.IsNullOrEmpty(value))
+                        return false;
+                    else
+                        return value.Equals(filterText, StringComparison.InvariantCultureIgnoreCase);
+                case FilterType.Component:
+                    return false;
+                default:
+                    return false;
+            }
+
+            return false;
+        }
+
+        public static void ClearObjects(WindowState state)
+        {
             state.CurrentObjects.Clear();
         }
 
@@ -625,12 +875,8 @@ For more info, please see the pdf file inside PropertyInspector’s folder or vi
             for (int i = 0; i < state.CurrentObjects.Count; i++)
             {
                 var current = state.CurrentObjects[i];
-                var entryName = string.Format(Constants.ObjectHeaderPrefixFormat, current.ObjectIdentifier);
-                EditorPrefs.SetBool(entryName, true);
+                SetObjectHeaderState(current, true);
             }
-#if DEB
-            Debug.Log("EXPAND ALL");
-#endif
         }
 
         public static void CollapseAll(WindowState state)
@@ -638,12 +884,83 @@ For more info, please see the pdf file inside PropertyInspector’s folder or vi
             for (int i = 0; i < state.CurrentObjects.Count; i++)
             {
                 var current = state.CurrentObjects[i];
-                var entryName = string.Format(Constants.ObjectHeaderPrefixFormat, current.ObjectIdentifier);
-                EditorPrefs.SetBool(entryName, false);
+                SetObjectHeaderState(current, false);
             }
-#if DEB
-            Debug.Log("COLLAPSE ALL");
-#endif
+        }
+
+        public static bool GetObjectHeaderState(DrawableObject drawable)
+        {
+            var entryName = GetObjectHeaderPrefsKey(drawable);
+            return EditorPrefs.GetBool(entryName, false);
+        }
+
+        public static void SetObjectHeaderState(DrawableObject drawable, bool expanded)
+        {
+            var entryName = GetObjectHeaderPrefsKey(drawable);
+            EditorPrefs.SetBool(entryName, expanded);
+        }
+
+        public static string GetObjectHeaderPrefsKey(DrawableObject drawable)
+        {
+            return string.Format(Constants.ObjectHeaderPrefixFormat, drawable.ObjectIdentifier);
+        }
+
+        private static string GetValueString(SerializedProperty property)
+        {
+            switch (property.propertyType)
+            {
+                case SerializedPropertyType.Integer:
+                    return property.intValue.ToString();
+                case SerializedPropertyType.Boolean:
+                    return property.boolValue.ToString();
+                case SerializedPropertyType.Float:
+                    return property.floatValue.ToString();
+                case SerializedPropertyType.String:
+                    return property.stringValue;
+                case SerializedPropertyType.Color:
+                    return property.colorValue.ToString();
+                case SerializedPropertyType.ObjectReference:
+                    if (property.objectReferenceValue)
+                        return property.objectReferenceValue.GetType().Name;
+                    else
+                        return null;
+                case SerializedPropertyType.LayerMask:
+                    return property.ToString();
+                case SerializedPropertyType.Enum:
+                    if (property.enumValueIndex < 0 || property.enumValueIndex > property.enumNames.Length)
+                        return null;
+                    else
+                        return property.enumNames[property.enumValueIndex];
+                case SerializedPropertyType.Vector2:
+                    return property.vector2Value.ToString();
+                case SerializedPropertyType.Vector3:
+                    return property.vector3Value.ToString();
+                case SerializedPropertyType.Vector4:
+                    return property.vector4Value.ToString();
+                case SerializedPropertyType.Rect:
+                    return property.rectValue.ToString();
+                case SerializedPropertyType.ArraySize:
+                    return null;
+                case SerializedPropertyType.Character:
+                    return property.ToString();
+                case SerializedPropertyType.AnimationCurve:
+                    return property.animationCurveValue.ToString();
+                case SerializedPropertyType.Bounds:
+                    return property.boundsValue.ToString();
+                case SerializedPropertyType.Gradient:
+                    return property.ToString();
+                case SerializedPropertyType.Quaternion:
+                    return property.quaternionValue.ToString();
+                case SerializedPropertyType.ExposedReference:
+                    if (property.exposedReferenceValue)
+                        return property.exposedReferenceValue.ToString();
+                    else
+                        return null;
+                case SerializedPropertyType.FixedBufferSize:
+                    return null;
+                default:
+                    return null;
+            }
         }
     }
 }
