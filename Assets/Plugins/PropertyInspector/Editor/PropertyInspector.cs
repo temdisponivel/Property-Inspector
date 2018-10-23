@@ -1163,7 +1163,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
             }
 
             var instanceRoot = PrefabUtility.FindRootGameObjectWithSameParentPrefab(instance);
-            var targetPrefab = PrefabUtility.GetPrefabParent(instanceRoot);
+            var targetPrefab = PrefabUtility.GetCorrespondingObjectFromSource(instanceRoot);
 
             if (targetPrefab == null)
                 return;
@@ -1216,7 +1216,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
             }
 
             var instanceRoot = PrefabUtility.FindRootGameObjectWithSameParentPrefab(instance);
-            var targetPrefab = PrefabUtility.GetPrefabParent(instanceRoot);
+            var targetPrefab = PrefabUtility.GetCorrespondingObjectFromSource(instanceRoot);
 
             if (targetPrefab == null)
                 return;
@@ -1468,7 +1468,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
     /// </summary>
     private void UpdateLastRectDraw()
     {
-        if (Event.current.type == EventType.repaint)
+        if (Event.current.type == EventType.Repaint)
         {
             _lastDrawPosition = GUILayoutUtility.GetLastRect();
         }
@@ -1484,7 +1484,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
         // this is used to validated if we are drawing outside of screen
         UpdateLastRectDraw();
 
-        if (Event.current.type == EventType.repaint)
+        if (Event.current.type == EventType.Repaint)
         {
             var pos = position;
             pos.position = _scrollPosition;
