@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
@@ -374,7 +374,7 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
 
         GUI.SetNextControlName(SearchFieldName);
 
-        var search = EditorGUILayout.TextField(_currentSearchedQuery, (GUIStyle)"ToolbarSeachTextField", GUILayout.Width(position.width - 25));
+        var search = EditorGUILayout.TextField(_currentSearchedQuery, (GUIStyle)"ToolbarSearchTextField", GUILayout.Width(position.width - 25));
 
         if (search != _currentSearchedQuery)
         {
@@ -382,9 +382,9 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
             _currentSearchedQuery = search;
         }
 
-        var style = "ToolbarSeachCancelButtonEmpty";
+        var style = "ToolbarSearchCancelButtonEmpty";
         if (!string.IsNullOrEmpty(_currentSearchedQuery))
-            style = "ToolbarSeachCancelButton";
+            style = "ToolbarSearchCancelButton";
 
         if (GUILayout.Button(GUIContent.none, style))
         {
@@ -1162,16 +1162,16 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
                     continue;
             }
 
-            var instanceRoot = PrefabUtility.FindRootGameObjectWithSameParentPrefab(instance);
+            var instanceRoot = PrefabUtility.GetOutermostPrefabInstanceRoot(instance);
             var targetPrefab = PrefabUtility.GetCorrespondingObjectFromSource(instanceRoot);
 
             if (targetPrefab == null)
                 return;
 
-            PrefabUtility.ReplacePrefab(
+            PrefabUtility.SaveAsPrefabAssetAndConnect(
                 instanceRoot,
-                targetPrefab,
-                ReplacePrefabOptions.ConnectToPrefab
+                AssetDatabase.GetAssetPath(targetPrefab),
+                InteractionMode.UserAction
             );
         }
 
@@ -1215,13 +1215,13 @@ public class PropertyInspector : EditorWindow, IHasCustomMenu
                     continue;
             }
 
-            var instanceRoot = PrefabUtility.FindRootGameObjectWithSameParentPrefab(instance);
+            var instanceRoot = PrefabUtility.GetOutermostPrefabInstanceRoot(instance);
             var targetPrefab = PrefabUtility.GetCorrespondingObjectFromSource(instanceRoot);
 
             if (targetPrefab == null)
                 return;
 
-            PrefabUtility.RevertPrefabInstance(instanceRoot);
+            PrefabUtility.RevertPrefabInstance(instanceRoot, InteractionMode.UserAction);
         }
 
         property.HasAppliableChanges = false;
